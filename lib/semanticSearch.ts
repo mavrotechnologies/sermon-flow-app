@@ -50,6 +50,7 @@ export async function initializeSemanticSearch(
     try {
       onProgress?.('Loading AI model (22MB)...');
 
+      // @ts-expect-error - transformers.js pipeline has complex union types
       extractor = await pipeline(
         'feature-extraction',
         'Xenova/all-MiniLM-L6-v2',
