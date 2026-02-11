@@ -148,6 +148,8 @@ body {
 .delay-600 { animation-delay: 0.6s; }
 .delay-700 { animation-delay: 0.7s; }
 .delay-800 { animation-delay: 0.8s; }
+.delay-900 { animation-delay: 0.9s; }
+.delay-1000 { animation-delay: 1s; }
 
 /* Initially hidden for animations */
 .opacity-0-initial {
@@ -174,6 +176,202 @@ body {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* MD3 Design System */
+
+/* MD3 Color Tokens - Dark Theme */
+:root {
+  --md3-primary: #a5c8ff;
+  --md3-on-primary: #003062;
+  --md3-primary-container: #00468a;
+  --md3-on-primary-container: #d4e3ff;
+
+  --md3-secondary: #bbc7db;
+  --md3-on-secondary: #263141;
+  --md3-secondary-container: #3c4858;
+  --md3-on-secondary-container: #d7e3f8;
+
+  --md3-tertiary: #d5bee5;
+  --md3-on-tertiary: #3a2948;
+  --md3-tertiary-container: #513f60;
+  --md3-on-tertiary-container: #f1daff;
+
+  --md3-surface: #0f1115;
+  --md3-surface-container: #1a1d24;
+  --md3-surface-container-high: #252830;
+  --md3-surface-container-highest: #30333c;
+  --md3-on-surface: #e2e2e9;
+  --md3-on-surface-variant: #c4c7d0;
+  --md3-outline: #8e9099;
+  --md3-outline-variant: #44474f;
+}
+
+/* MD3 Surface Containers */
+.md3-surface {
+  background-color: var(--md3-surface);
+}
+
+.md3-surface-container {
+  background-color: var(--md3-surface-container);
+}
+
+.md3-surface-container-high {
+  background-color: var(--md3-surface-container-high);
+}
+
+.md3-surface-container-highest {
+  background-color: var(--md3-surface-container-highest);
+}
+
+/* MD3 Primary */
+.md3-primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+}
+
+/* MD3 Buttons */
+.md3-filled {
+  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  color: white;
+  transition: all 0.2s ease;
+}
+
+.md3-filled:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.md3-filled:active {
+  transform: translateY(0);
+}
+
+.md3-filled-tonal {
+  background-color: rgba(165, 200, 255, 0.12);
+  color: #a5c8ff;
+  transition: all 0.2s ease;
+}
+
+.md3-filled-tonal:hover {
+  background-color: rgba(165, 200, 255, 0.18);
+}
+
+.md3-outlined {
+  background-color: transparent;
+  border: 1.5px solid var(--md3-outline-variant);
+  color: var(--md3-on-surface);
+  transition: all 0.2s ease;
+}
+
+.md3-outlined:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--md3-outline);
+}
+
+.md3-text {
+  background-color: transparent;
+  color: var(--md3-primary);
+  transition: all 0.2s ease;
+}
+
+.md3-text:hover {
+  background-color: rgba(165, 200, 255, 0.08);
+}
+
+/* MD3 Chips */
+.md3-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background-color: var(--md3-surface-container-high);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--md3-on-surface);
+  transition: all 0.2s ease;
+}
+
+.md3-chip:hover {
+  background-color: var(--md3-surface-container-highest);
+}
+
+.md3-chip-outlined {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background-color: transparent;
+  border: 1px solid var(--md3-outline-variant);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--md3-on-surface);
+  transition: all 0.2s ease;
+}
+
+.md3-chip-outlined:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: var(--md3-outline);
+}
+
+/* MD3 Cards */
+.md3-card {
+  background-color: var(--md3-surface-container);
+  border-radius: 1.5rem;
+  overflow: hidden;
+}
+
+.md3-card-elevated {
+  background-color: var(--md3-surface-container-high);
+  border-radius: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* MD3 Touch Target (48dp minimum) */
+.tap-target {
+  min-height: 48px;
+  min-width: 48px;
+}
+
+@media (min-width: 768px) {
+  .tap-target {
+    min-height: 40px;
+    min-width: 40px;
+  }
+}
+
+/* Blinking cursor animation */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.animate-blink {
+  animation: blink 1s step-end infinite;
+}
+
+/* Typing animation */
+.typing-animation {
+  overflow: hidden;
+}
+
+/* Enhanced card hover */
+.card-hover-glow {
+  position: relative;
+}
+
+.card-hover-glow::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(139, 92, 246, 0.3));
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: -1;
+  filter: blur(8px);
+}
+
+.card-hover-glow:hover::before {
+  opacity: 1;
 }
 
 /* Gradient Text */
@@ -283,6 +481,88 @@ body {
 /* Smooth Scroll */
 html {
   scroll-behavior: smooth;
+}
+
+/* Pulse glow animation for CTA */
+@keyframes pulse-glow-slow {
+  0%, 100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.1);
+  }
+}
+
+.animate-pulse-glow-slow {
+  animation: pulse-glow-slow 3s ease-in-out infinite;
+}
+
+/* Scroll-triggered animations */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-up {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.6s ease-out forwards;
+}
+
+.animate-scale-up {
+  animation: scale-up 0.6s ease-out forwards;
+}
+
+.animate-pop-in {
+  animation: pop-in 0.4s ease-out forwards;
+}
+
+/* Recording pulse */
+@keyframes recording-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.animate-recording {
+  animation: recording-dot 1.5s ease-in-out infinite;
+}
+
+/* Breathing pulse for icons */
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.animate-breathe {
+  animation: breathe 2.5s ease-in-out infinite;
 }
 
 /* Focus Styles */

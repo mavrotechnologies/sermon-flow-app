@@ -59,25 +59,17 @@ export interface SermonState {
   selectedDevice: string | null;
 }
 
-// Public domain translations (freely available)
+// Public domain translations (freely available via bible-api.com)
 export type PublicDomainTranslation =
   | 'KJV'    // King James Version
   | 'WEB'    // World English Bible
-  | 'ASV'    // American Standard Version
-  | 'BBE'    // Bible in Basic English
-  | 'DARBY'  // Darby Translation
-  | 'YLT'    // Young's Literal Translation
-  | 'WBT';   // Webster Bible Translation
+  | 'ASV';   // American Standard Version
 
-// Premium/copyrighted translations (API fallback)
+// Premium translations (via API.Bible)
 export type PremiumTranslation =
-  | 'ESV'    // English Standard Version
-  | 'NIV'    // New International Version
   | 'NKJV'   // New King James Version
-  | 'NASB'   // New American Standard Bible
-  | 'NLT'    // New Living Translation
-  | 'AMP'    // Amplified Bible
-  | 'MSG';   // The Message
+  | 'NIV'    // New International Version
+  | 'NLT';   // New Living Translation
 
 export type BibleTranslation = PublicDomainTranslation | PremiumTranslation;
 
@@ -91,22 +83,14 @@ export interface TranslationInfo {
 }
 
 export const TRANSLATIONS: TranslationInfo[] = [
-  // Public Domain - Full offline support
+  // Public Domain - Free via bible-api.com
   { code: 'KJV', name: 'KJV', fullName: 'King James Version', isPublicDomain: true, description: 'Traditional, poetic language' },
   { code: 'WEB', name: 'WEB', fullName: 'World English Bible', isPublicDomain: true, description: 'Modern public domain' },
   { code: 'ASV', name: 'ASV', fullName: 'American Standard Version', isPublicDomain: true, description: 'Literal translation (1901)' },
-  { code: 'BBE', name: 'BBE', fullName: 'Bible in Basic English', isPublicDomain: true, description: 'Simple vocabulary' },
-  { code: 'DARBY', name: 'Darby', fullName: 'Darby Translation', isPublicDomain: true, description: 'Literal study Bible' },
-  { code: 'YLT', name: 'YLT', fullName: "Young's Literal Translation", isPublicDomain: true, description: 'Very literal rendering' },
-  { code: 'WBT', name: 'Webster', fullName: 'Webster Bible Translation', isPublicDomain: true, description: 'Updated KJV language' },
-  // Premium - Online only
-  { code: 'ESV', name: 'ESV', fullName: 'English Standard Version', isPublicDomain: false, description: 'Modern literal' },
+  // Premium - Via API.Bible
+  { code: 'NKJV', name: 'NKJV', fullName: 'New King James Version', isPublicDomain: false, description: 'Updated KJV language' },
   { code: 'NIV', name: 'NIV', fullName: 'New International Version', isPublicDomain: false, description: 'Balanced readability' },
-  { code: 'NKJV', name: 'NKJV', fullName: 'New King James Version', isPublicDomain: false, description: 'Updated KJV' },
-  { code: 'NASB', name: 'NASB', fullName: 'New American Standard Bible', isPublicDomain: false, description: 'Highly accurate' },
   { code: 'NLT', name: 'NLT', fullName: 'New Living Translation', isPublicDomain: false, description: 'Easy to understand' },
-  { code: 'AMP', name: 'AMP', fullName: 'Amplified Bible', isPublicDomain: false, description: 'Expanded meaning' },
-  { code: 'MSG', name: 'MSG', fullName: 'The Message', isPublicDomain: false, description: 'Contemporary paraphrase' },
 ];
 
 // SSE Event Types

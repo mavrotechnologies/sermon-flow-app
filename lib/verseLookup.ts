@@ -83,30 +83,77 @@ async function lookupLocal(
   return verses;
 }
 
-// Map our translation names to bible-api.com translations
-const API_TRANSLATION_MAP: Record<string, string> = {
-  // Public domain - direct support
+// Map our translation names to bible-api.com translations (public domain only)
+const BIBLE_API_TRANSLATIONS: Record<string, string> = {
   KJV: 'kjv',
   WEB: 'web',
   ASV: 'asv',
-  BBE: 'bbe',
-  DARBY: 'darby',
-  YLT: 'ylt',
-  WBT: 'web', // Webster fallback
-  // Premium - fallback to KJV
-  ESV: 'kjv',
-  NIV: 'kjv',
-  NKJV: 'kjv',
-  NASB: 'kjv',
-  NLT: 'kjv',
-  AMP: 'kjv',
-  MSG: 'kjv',
 };
 
+// Premium translations that need API.Bible
+const PREMIUM_TRANSLATIONS = new Set(['NKJV', 'NIV', 'NLT']);
+
 /**
- * Fallback: Look up verses from bible-api.com
+ * Look up verses from our API.Bible proxy (for premium translations)
  */
-async function lookupAPI(
+async function lookupApiBible(
+  ref: ScriptureReference,
+  translation: BibleTranslation
+): Promise<BibleVerse[]> {
+  try {
+    const params = new URLSearchParams({
+      book: ref.book,
+      chapter: ref.chapter.toString(),
+      verse: ref.verseStart.toString(),
+      translation,
+    });
+
+    if (ref.verseEnd && ref.verseEnd !== ref.verseStart) {
+      params.set('verseEnd', ref.verseEnd.toString());
+    }
+
+    const response = await fetch(`/api/bible-verse?${params}`);
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      if (data.useFallback) {
+        // Fall back to bible-api.com with KJV
+        return lookupBibleApi(ref, 'KJV');
+      }
+      throw new Error(`API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.text) {
+      // If it's a range, we get combined text - split into verses if needed
+      const verses: BibleVerse[] = [];
+
+      // For now, return as single combined verse
+      // Use the translation from API response (actual translation used)
+      verses.push({
+        book: data.book || ref.book,
+        chapter: data.chapter || ref.chapter,
+        verse: ref.verseStart,
+        text: data.text,
+        translation: data.translation || translation,
+      });
+
+      return verses;
+    }
+
+    return [];
+  } catch (error) {
+    console.error('API.Bible lookup failed:', error);
+    // Fall back to bible-api.com
+    return lookupBibleApi(ref, 'KJV');
+  }
+}
+
+/**
+ * Look up verses from bible-api.com (public domain translations)
+ */
+async function lookupBibleApi(
   ref: ScriptureReference,
   translation: BibleTranslation
 ): Promise<BibleVerse[]> {
@@ -114,7 +161,7 @@ async function lookupAPI(
     ? `${ref.book}+${ref.chapter}:${ref.verseStart}-${ref.verseEnd}`
     : `${ref.book}+${ref.chapter}:${ref.verseStart}`;
 
-  const apiTranslation = API_TRANSLATION_MAP[translation] || 'kjv';
+  const apiTranslation = BIBLE_API_TRANSLATIONS[translation] || 'kjv';
 
   try {
     const response = await fetch(
@@ -156,14 +203,35 @@ async function lookupAPI(
 }
 
 /**
+ * Fallback: Look up verses from appropriate API based on translation
+ */
+async function lookupAPI(
+  ref: ScriptureReference,
+  translation: BibleTranslation
+): Promise<BibleVerse[]> {
+  // Use API.Bible for premium translations
+  if (PREMIUM_TRANSLATIONS.has(translation)) {
+    return lookupApiBible(ref, translation);
+  }
+
+  // Use bible-api.com for public domain translations
+  return lookupBibleApi(ref, translation);
+}
+
+/**
  * Look up verses for a scripture reference
- * Tries local data first, falls back to API
+ * Uses API for premium translations, local data for public domain
  */
 export async function lookupVerses(
   ref: ScriptureReference,
-  translation: BibleTranslation = 'KJV'
+  translation: BibleTranslation = 'NKJV'
 ): Promise<BibleVerse[]> {
-  // Try local lookup first
+  // Premium translations must use API (no local files)
+  if (PREMIUM_TRANSLATIONS.has(translation)) {
+    return lookupApiBible(ref, translation);
+  }
+
+  // Try local lookup first for public domain translations
   const localVerses = await lookupLocal(ref, translation);
   if (localVerses.length > 0) {
     return localVerses;
@@ -180,7 +248,7 @@ export async function lookupSingleVerse(
   book: string,
   chapter: number,
   verse: number,
-  translation: BibleTranslation = 'KJV'
+  translation: BibleTranslation = 'NKJV'
 ): Promise<BibleVerse | null> {
   const ref: ScriptureReference = {
     id: 'temp',

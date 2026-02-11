@@ -24,10 +24,14 @@ export function useScriptureDetection(
 ): UseScriptureDetectionResult {
   const [detectedScriptures, setDetectedScriptures] = useState<DetectedScripture[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [translation, setTranslation] = useState<BibleTranslation>('KJV');
+  const [translation, setTranslation] = useState<BibleTranslation>('NKJV');
 
   const processedRefs = useRef<Set<string>>(new Set());
   const isInitialized = useRef(false);
+
+  // Use ref to access current scriptures in useEffect without stale closure
+  const scripturesRef = useRef<DetectedScripture[]>([]);
+  scripturesRef.current = detectedScriptures;
 
   // Initialize the BCV parser
   useEffect(() => {
@@ -36,6 +40,32 @@ export function useScriptureDetection(
       isInitialized.current = true;
     }
   }, []);
+
+  // Re-fetch verses when translation changes
+  useEffect(() => {
+    // Access current scriptures via ref to avoid stale closure
+    const currentScriptures = scripturesRef.current;
+    if (currentScriptures.length === 0) return;
+
+    const refetchVerses = async () => {
+      setIsProcessing(true);
+      try {
+        const updatedScriptures = await Promise.all(
+          currentScriptures.map(async (scripture) => {
+            const verses = await lookupVerses(scripture, translation);
+            return { ...scripture, verses };
+          })
+        );
+        setDetectedScriptures(updatedScriptures);
+      } catch (error) {
+        console.error('Error refetching verses:', error);
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+
+    refetchVerses();
+  }, [translation]);
 
   /**
    * Create unique key for a scripture reference to avoid duplicates

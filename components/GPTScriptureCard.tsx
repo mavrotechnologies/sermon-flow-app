@@ -112,10 +112,10 @@ export function GPTScriptureList({
 
   if (scriptures.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-center py-16">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mb-4">
+      <div className="h-full flex flex-col items-center justify-center text-center">
+        <div className="w-16 h-16 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mb-4">
           <svg
-            className="w-8 h-8 text-purple-400"
+            className="w-8 h-8 text-purple-400/50"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -128,9 +128,11 @@ export function GPTScriptureList({
             />
           </svg>
         </div>
-        <p className="text-gray-400 text-sm font-medium">Scripture Detection</p>
-        <p className="text-gray-600 text-xs mt-1">
-          {isDetecting ? 'Analyzing sermon...' : 'References will appear here automatically'}
+        <p className="text-gray-400 text-sm">
+          {isDetecting ? 'Analyzing sermon...' : 'AI-detected references will appear here'}
+        </p>
+        <p className="text-gray-500 text-xs mt-1">
+          {isDetecting ? 'Listening for scripture mentions' : 'Scripture will be detected automatically'}
         </p>
         {isDetecting && (
           <div className="mt-4 flex items-center gap-2 text-purple-400">

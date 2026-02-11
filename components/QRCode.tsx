@@ -61,6 +61,7 @@ interface QRCodeModalProps {
 
 export function QRCodeModal({ isOpen, onClose, url }: QRCodeModalProps) {
   const [liveUrl, setLiveUrl] = useState<string>('');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (url) {
@@ -71,55 +72,107 @@ export function QRCodeModal({ isOpen, onClose, url }: QRCodeModalProps) {
     }
   }, [url]);
 
+  const copyUrl = () => {
+    navigator.clipboard.writeText(liveUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   if (!isOpen) return null;
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50"
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 max-w-sm mx-4"
+        className="relative p-[1px] rounded-2xl bg-gradient-to-b from-purple-500/30 via-purple-500/10 to-transparent max-w-sm mx-4 animate-fade-in"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-            Join Live View
-          </h3>
-          <button
-            onClick={onClose}
-            className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="flex justify-center mb-4">
-          {liveUrl && (
-            <div className="bg-white p-4 rounded-lg">
-              <QRCodeSVG
-                value={liveUrl}
-                size={200}
-                level="M"
-                includeMargin={false}
-              />
+        <div className="bg-[#0c0c10] rounded-2xl p-6">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">Share Live View</h3>
+                <p className="text-xs text-gray-500">Let congregation follow along</p>
+              </div>
             </div>
-          )}
-        </div>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl hover:bg-white/5 text-gray-400 hover:text-white transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
 
-        <p className="text-center text-sm text-gray-600 dark:text-gray-400 mb-4">
-          Scan this QR code with your phone to follow along
-        </p>
+          {/* QR Code */}
+          <div className="flex justify-center mb-6">
+            {liveUrl && (
+              <div className="relative p-[1px] rounded-2xl bg-gradient-to-b from-white/20 to-white/5">
+                <div className="bg-white p-4 rounded-2xl">
+                  <QRCodeSVG
+                    value={liveUrl}
+                    size={180}
+                    level="M"
+                    includeMargin={false}
+                    bgColor="#ffffff"
+                    fgColor="#0c0c10"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
 
-        <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-3">
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-            Or visit this URL:
+          {/* Instructions */}
+          <p className="text-center text-sm text-gray-400 mb-4">
+            Scan with phone camera to join live scripture view
           </p>
-          <p className="text-sm text-blue-600 dark:text-blue-400 font-mono break-all">
-            {liveUrl}
-          </p>
+
+          {/* URL Box */}
+          <div className="relative p-[1px] rounded-xl bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-blue-500/20">
+            <div className="bg-[#0a0a0d] rounded-xl p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-gray-500 mb-1">Live URL</p>
+                  <p className="text-sm text-blue-400 font-mono truncate">
+                    {liveUrl}
+                  </p>
+                </div>
+                <button
+                  onClick={copyUrl}
+                  className={`shrink-0 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                    copied
+                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                      : 'bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  {copied ? (
+                    <span className="flex items-center gap-1">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Copied
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      Copy
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

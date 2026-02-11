@@ -19,7 +19,7 @@ interface AudioControlsProps {
   isSupported: boolean;
 }
 
-const TRANSLATIONS: BibleTranslation[] = ['KJV', 'WEB', 'ESV', 'NIV', 'NKJV'];
+const TRANSLATIONS: BibleTranslation[] = ['KJV', 'WEB', 'ASV', 'NKJV', 'NIV', 'NLT'];
 
 /**
  * Audio controls panel for managing recording and device selection

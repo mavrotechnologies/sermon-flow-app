@@ -1,23 +1,28 @@
 /**
  * Semantic Bible verse search using embeddings
  * Uses Transformers.js to run MiniLM model in the browser
+ * Enhanced with popular verse pre-indexing and batch processing
  */
 
 import { pipeline, FeatureExtractionPipeline } from '@huggingface/transformers';
+import { POPULAR_VERSES } from './popularVerseCache';
 
 export interface SemanticMatch {
   book: string;
   chapter: number;
   verse: number;
+  verseEnd?: number;
   text: string;
   similarity: number;
   confidence: 'high' | 'medium' | 'low';
+  source: 'popular' | 'full';  // Whether from popular cache or full search
 }
 
 interface VerseData {
   book: string;
   chapter: number;
   verse: number;
+  verseEnd?: number;
   text: string;
   embedding?: number[];
 }
@@ -27,10 +32,13 @@ let extractor: FeatureExtractionPipeline | null = null;
 let isModelLoading = false;
 let modelLoadPromise: Promise<void> | null = null;
 let bibleVerses: VerseData[] = [];
+let popularVerseEmbeddings: Map<string, { data: VerseData; embedding: number[] }> = new Map();
+let popularVersesIndexed = false;
 
-// Confidence thresholds from the research
-const HIGH_CONFIDENCE_THRESHOLD = 0.75;
-const MEDIUM_CONFIDENCE_THRESHOLD = 0.60;
+// Confidence thresholds
+const HIGH_CONFIDENCE_THRESHOLD = 0.78;
+const MEDIUM_CONFIDENCE_THRESHOLD = 0.65;
+const LOW_CONFIDENCE_THRESHOLD = 0.55;
 
 /**
  * Initialize the embedding model
@@ -250,9 +258,11 @@ export async function searchBibleVerses(
       book: bibleVerses[index].book,
       chapter: bibleVerses[index].chapter,
       verse: bibleVerses[index].verse,
+      verseEnd: bibleVerses[index].verseEnd,
       text: bibleVerses[index].text,
       similarity,
       confidence: getConfidence(similarity),
+      source: 'full' as const,
     }));
 }
 
@@ -274,5 +284,153 @@ export function isSemanticSearchLoading(): boolean {
  * Format a semantic match as a reference string
  */
 export function formatMatchReference(match: SemanticMatch): string {
+  if (match.verseEnd && match.verseEnd !== match.verse) {
+    return `${match.book} ${match.chapter}:${match.verse}-${match.verseEnd}`;
+  }
   return `${match.book} ${match.chapter}:${match.verse}`;
+}
+
+/**
+ * Index popular verses for fast searching
+ * Should be called after model is initialized
+ */
+export async function indexPopularVerses(
+  onProgress?: (message: string) => void
+): Promise<void> {
+  if (!extractor || popularVersesIndexed) return;
+
+  onProgress?.('Indexing popular verses...');
+
+  // Create verse data from popular verses
+  for (const verse of POPULAR_VERSES) {
+    // Create a combined text from keywords and verse reference
+    const searchText = [
+      ...verse.keywords,
+      ...verse.paraphrases,
+    ].join(' ');
+
+    const data: VerseData = {
+      book: verse.book,
+      chapter: verse.chapter,
+      verse: verse.verseStart,
+      verseEnd: verse.verseEnd,
+      text: searchText,
+    };
+
+    // Generate embedding
+    const embedding = await embed(searchText);
+
+    popularVerseEmbeddings.set(verse.reference, { data, embedding });
+  }
+
+  popularVersesIndexed = true;
+  onProgress?.(`Indexed ${popularVerseEmbeddings.size} popular verses`);
+}
+
+/**
+ * Fast search of popular verses only
+ * Much faster than full Bible search
+ */
+export async function searchPopularVerses(
+  text: string,
+  topK: number = 5,
+  minSimilarity: number = LOW_CONFIDENCE_THRESHOLD
+): Promise<SemanticMatch[]> {
+  if (!extractor) {
+    throw new Error('Semantic search not initialized');
+  }
+
+  if (!popularVersesIndexed) {
+    await indexPopularVerses();
+  }
+
+  const queryEmbedding = await embed(text);
+  const results: { reference: string; data: VerseData; similarity: number }[] = [];
+
+  for (const [reference, { data, embedding }] of popularVerseEmbeddings) {
+    const similarity = cosineSimilarity(queryEmbedding, embedding);
+    if (similarity >= minSimilarity) {
+      results.push({ reference, data, similarity });
+    }
+  }
+
+  results.sort((a, b) => b.similarity - a.similarity);
+
+  return results.slice(0, topK).map(({ data, similarity }) => ({
+    book: data.book,
+    chapter: data.chapter,
+    verse: data.verse,
+    verseEnd: data.verseEnd,
+    text: data.text,
+    similarity,
+    confidence: getConfidence(similarity),
+    source: 'popular' as const,
+  }));
+}
+
+/**
+ * Tiered search: popular verses first, then full Bible if needed
+ */
+export async function tieredSemanticSearch(
+  text: string,
+  options: {
+    topK?: number;
+    minConfidence?: 'high' | 'medium' | 'low';
+    searchFullBible?: boolean;
+  } = {}
+): Promise<SemanticMatch[]> {
+  const { topK = 5, minConfidence = 'medium', searchFullBible = false } = options;
+
+  // Stage 1: Search popular verses (fast)
+  const popularResults = await searchPopularVerses(text, topK);
+
+  // If we have high-confidence matches, return early
+  const highConfidenceMatches = popularResults.filter(r => r.confidence === 'high');
+  if (highConfidenceMatches.length > 0) {
+    return highConfidenceMatches;
+  }
+
+  // If we have enough medium-confidence matches and not requiring high, return
+  if (minConfidence !== 'high' && popularResults.length >= topK) {
+    return popularResults;
+  }
+
+  // Stage 2: Full Bible search if enabled and needed
+  if (searchFullBible && bibleVerses.length > 0) {
+    const fullResults = await searchBibleVerses(text, topK, minConfidence);
+
+    // Merge results, preferring popular verse matches
+    const mergedResults = [...popularResults];
+    const existingRefs = new Set(popularResults.map(r => `${r.book}-${r.chapter}-${r.verse}`));
+
+    for (const result of fullResults) {
+      const ref = `${result.book}-${result.chapter}-${result.verse}`;
+      if (!existingRefs.has(ref)) {
+        mergedResults.push({ ...result, source: 'full' as const });
+        existingRefs.add(ref);
+      }
+    }
+
+    mergedResults.sort((a, b) => b.similarity - a.similarity);
+    return mergedResults.slice(0, topK);
+  }
+
+  return popularResults;
+}
+
+/**
+ * Get embedding statistics
+ */
+export function getSemanticSearchStats(): {
+  modelLoaded: boolean;
+  popularVersesIndexed: boolean;
+  popularVerseCount: number;
+  fullBibleVerseCount: number;
+} {
+  return {
+    modelLoaded: !!extractor,
+    popularVersesIndexed,
+    popularVerseCount: popularVerseEmbeddings.size,
+    fullBibleVerseCount: bibleVerses.length,
+  };
 }

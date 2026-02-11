@@ -1,0 +1,15 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Next.js requires the Netlify Next.js plugin
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Environment variables (set these in Netlify dashboard)
+# OPENAI_API_KEY = your_openai_key
+# DEEPGRAM_API_KEY = your_deepgram_key
+# API_BIBLE_KEY = your_api_bible_key
