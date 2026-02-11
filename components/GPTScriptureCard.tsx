@@ -112,7 +112,7 @@ export function GPTScriptureList({
 
   if (scriptures.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-center">
+      <div className="flex-1 flex flex-col items-center justify-center text-center">
         <div className="w-16 h-16 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mb-4">
           <svg
             className="w-8 h-8 text-purple-400/50"
