@@ -123,15 +123,15 @@ export function AudioControls({
         </button>
 
         {/* Device Selector */}
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600 dark:text-gray-400">
+        <div className="flex items-center gap-2 min-w-0 w-full sm:w-auto sm:max-w-xs">
+          <label className="text-sm text-gray-600 dark:text-gray-400 shrink-0">
             Microphone:
           </label>
           <select
             value={selectedDevice || ''}
             onChange={(e) => onDeviceSelect(e.target.value)}
             disabled={!hasPermission || devices.length === 0}
-            className="px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 min-w-0 w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {devices.length === 0 ? (
               <option value="">No devices found</option>

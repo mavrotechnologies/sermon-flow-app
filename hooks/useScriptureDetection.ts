@@ -3,12 +3,13 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { detectScriptures, initializeParser, formatReference } from '@/lib/scriptureDetector';
 import { lookupVerses } from '@/lib/verseLookup';
-import type { TranscriptSegment, DetectedScripture, ScriptureReference, BibleTranslation } from '@/types';
+import type { TranscriptSegment, DetectedScripture, ScriptureReference, BibleTranslation, BibleVerse } from '@/types';
 
 interface UseScriptureDetectionResult {
   detectedScriptures: DetectedScripture[];
   processSegment: (segment: TranscriptSegment) => Promise<DetectedScripture[]>;
   addScriptureByRef: (book: string, chapter: number, verse: number, verseEnd?: number) => Promise<void>;
+  navigateVerse: (scriptureId: string, direction: 'prev' | 'next') => Promise<void>;
   clearScriptures: () => void;
   isProcessing: boolean;
   translation: BibleTranslation;
@@ -28,6 +29,7 @@ export function useScriptureDetection(
 
   const processedRefs = useRef<Set<string>>(new Set());
   const isInitialized = useRef(false);
+  const verseCache = useRef<Map<string, BibleVerse[]>>(new Map());
 
   // Use ref to access current scriptures in useEffect without stale closure
   const scripturesRef = useRef<DetectedScripture[]>([]);
@@ -126,6 +128,44 @@ export function useScriptureDetection(
   );
 
   /**
+   * Fetch a verse with caching
+   */
+  const fetchVersesCached = useCallback(
+    async (book: string, chapter: number, verse: number): Promise<BibleVerse[]> => {
+      const cacheKey = `${book}-${chapter}-${verse}-${translation}`;
+      const cached = verseCache.current.get(cacheKey);
+      if (cached) return cached;
+
+      const ref: ScriptureReference = {
+        id: 'nav',
+        rawText: `${book} ${chapter}:${verse}`,
+        book,
+        chapter,
+        verseStart: verse,
+        osis: `${book}.${chapter}.${verse}`,
+      };
+
+      const verses = await lookupVerses(ref, translation);
+      if (verses.length > 0) {
+        verseCache.current.set(cacheKey, verses);
+      }
+      return verses;
+    },
+    [translation]
+  );
+
+  /**
+   * Prefetch adjacent verses in background
+   */
+  const prefetchAdjacent = useCallback(
+    (book: string, chapter: number, verse: number) => {
+      if (verse > 1) fetchVersesCached(book, chapter, verse - 1).catch(() => {});
+      fetchVersesCached(book, chapter, verse + 1).catch(() => {});
+    },
+    [fetchVersesCached]
+  );
+
+  /**
    * Add a scripture by reference (from GPT detection)
    */
   const addScriptureByRef = useCallback(
@@ -159,11 +199,49 @@ export function useScriptureDetection(
         // Add at the beginning (stack order - newest first)
         setDetectedScriptures((prev) => [detectedScripture, ...prev]);
         onScriptureDetected?.(detectedScripture);
+
+        // Prefetch adjacent verses for fast navigation
+        prefetchAdjacent(book, chapter, verse);
       } catch (error) {
         console.error('Error adding scripture by ref:', error);
       }
     },
-    [translation, onScriptureDetected]
+    [translation, onScriptureDetected, prefetchAdjacent]
+  );
+
+  /**
+   * Navigate to prev/next verse for a scripture card
+   */
+  const navigateVerse = useCallback(
+    async (scriptureId: string, direction: 'prev' | 'next'): Promise<void> => {
+      const scripture = scripturesRef.current.find(s => s.id === scriptureId);
+      if (!scripture) return;
+
+      const newVerseStart = direction === 'next'
+        ? (scripture.verseEnd || scripture.verseStart) + 1
+        : scripture.verseStart - 1;
+
+      if (newVerseStart < 1) return;
+
+      try {
+        const verses = await fetchVersesCached(scripture.book, scripture.chapter, newVerseStart);
+        if (verses.length === 0) return;
+
+        setDetectedScriptures(prev =>
+          prev.map(s =>
+            s.id === scriptureId
+              ? { ...s, verseStart: newVerseStart, verseEnd: undefined, verses }
+              : s
+          )
+        );
+
+        // Prefetch adjacent verses for instant next navigation
+        prefetchAdjacent(scripture.book, scripture.chapter, newVerseStart);
+      } catch (error) {
+        console.error('Error navigating verse:', error);
+      }
+    },
+    [fetchVersesCached, prefetchAdjacent]
   );
 
   /**
@@ -178,6 +256,7 @@ export function useScriptureDetection(
     detectedScriptures,
     processSegment,
     addScriptureByRef,
+    navigateVerse,
     clearScriptures,
     isProcessing,
     translation,

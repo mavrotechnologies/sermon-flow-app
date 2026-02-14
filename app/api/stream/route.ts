@@ -6,15 +6,24 @@ export const runtime = 'nodejs';
 
 /**
  * SSE endpoint for broadcasting to audience clients
- * Clients connect here to receive real-time updates
+ * Clients connect here to receive real-time updates for a specific room
  */
 export async function GET(request: NextRequest) {
+  const roomId = request.nextUrl.searchParams.get('room');
+
+  if (!roomId) {
+    return Response.json({ error: 'Room code is required' }, { status: 400 });
+  }
+
+  // Ensure the room exists so clients can connect before admin starts broadcasting
+  broadcastManager.ensureRoom(roomId);
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
     start(controller) {
-      // Add client to broadcast manager
-      broadcastManager.addClient(controller);
+      // Add client to the room
+      broadcastManager.addClient(roomId, controller);
 
       // Send initial keep-alive
       const keepAlive = setInterval(() => {
@@ -28,7 +37,7 @@ export async function GET(request: NextRequest) {
       // Handle client disconnect
       request.signal.addEventListener('abort', () => {
         clearInterval(keepAlive);
-        broadcastManager.removeClient(controller);
+        broadcastManager.removeClient(roomId, controller);
       });
     },
   });
@@ -44,25 +53,35 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST endpoint for admin to send broadcast messages
+ * POST endpoint for admin to send broadcast messages to a room
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { type, payload } = body;
+    const { type, payload, room } = body;
+
+    if (!room) {
+      return Response.json({ error: 'Room code is required' }, { status: 400 });
+    }
+
+    // Ensure room exists for broadcasting
+    broadcastManager.ensureRoom(room);
 
     switch (type) {
       case 'transcript':
-        broadcastManager.broadcastTranscript(payload);
+        broadcastManager.broadcastTranscript(room, payload);
         break;
       case 'scripture':
-        broadcastManager.broadcastScripture(payload);
+        broadcastManager.broadcastScripture(room, payload);
         break;
       case 'status':
-        broadcastManager.broadcastStatus(payload);
+        broadcastManager.broadcastStatus(room, payload);
         break;
       case 'clear':
-        broadcastManager.broadcastClear();
+        broadcastManager.broadcastClear(room);
+        break;
+      case 'notes':
+        broadcastManager.broadcastNotes(room, payload);
         break;
       default:
         return Response.json({ error: 'Invalid message type' }, { status: 400 });
@@ -70,7 +89,7 @@ export async function POST(request: NextRequest) {
 
     return Response.json({
       success: true,
-      clientCount: broadcastManager.getClientCount(),
+      clientCount: broadcastManager.getClientCount(room),
     });
   } catch (error) {
     console.error('Broadcast error:', error);

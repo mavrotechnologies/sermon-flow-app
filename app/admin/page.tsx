@@ -8,20 +8,54 @@ import { useAudioDevices } from '@/hooks/useAudioDevices';
 import { useGPTScriptureDetection } from '@/hooks/useGPTScriptureDetection';
 import { useEnhancedScriptureDetection } from '@/hooks/useEnhancedScriptureDetection';
 import { useStreamingScriptureDetection } from '@/hooks/useStreamingScriptureDetection';
+import { useBroadcast } from '@/hooks/useBroadcast';
+import { useSermonNotes } from '@/hooks/useSermonNotes';
 import { QRCodeModal } from '@/components/QRCode';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { GPTScriptureList } from '@/components/GPTScriptureCard';
-import type { TranscriptSegment, ScriptureReference, BibleTranslation } from '@/types';
+import { generateRoomCode } from '@/lib/broadcast';
+import type { TranscriptSegment, ScriptureReference, DetectedScripture, BibleTranslation } from '@/types';
 import { TRANSLATIONS } from '@/types';
+import type { EnhancedDetection } from '@/hooks/useEnhancedScriptureDetection';
+import type { StreamingScripture } from '@/hooks/useStreamingScriptureDetection';
 
 export default function AdminPage() {
   const [showQRModal, setShowQRModal] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [highlightedScriptureId, setHighlightedScriptureId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'ai' | 'verses'>('ai');
   const [mounted, setMounted] = useState(false);
+  const [manualInput, setManualInput] = useState('');
+  const [isAddingManual, setIsAddingManual] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [roomCode] = useState(() => generateRoomCode());
+  const [roomCodeCopied, setRoomCodeCopied] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Broadcast hook for admin→live communication
+  const {
+    broadcastTranscript,
+    broadcastScripture,
+    broadcastStatus,
+    broadcastClear,
+    broadcastNotes,
+  } = useBroadcast();
+
+  // Sermon notes hook
+  const {
+    notes: sermonNotes,
+    isGenerating: isGeneratingNotes,
+    addTranscriptText: addNotesText,
+    updateScriptures: updateNotesScriptures,
+    clear: clearSermonNotes,
+  } = useSermonNotes({
+    onNotesGenerated: (updatedNotes) => {
+      broadcastNotes(roomCode, { notes: updatedNotes, isGenerating: false });
+    },
+  });
 
   // Track recent transcript text for GPT detection
   const recentTextRef = useRef<string>('');
@@ -67,6 +101,7 @@ export default function AdminPage() {
     detectedScriptures,
     processSegment,
     addScriptureByRef,
+    navigateVerse,
     clearScriptures,
     setTranslation: setScriptureTranslation,
   } = useScriptureDetection();
@@ -90,6 +125,71 @@ export default function AdminPage() {
     }
   }, [gptScriptures, addScriptureByRef]);
 
+  // Sync detected scriptures to notes hook for context
+  useEffect(() => {
+    updateNotesScriptures(detectedScriptures);
+  }, [detectedScriptures, updateNotesScriptures]);
+
+  // Helpers to map different detection types to DetectedScripture for broadcasting
+  const enhancedToDetected = useCallback((s: EnhancedDetection): DetectedScripture => ({
+    id: s.id,
+    book: s.book,
+    chapter: s.chapter,
+    verseStart: s.verseStart,
+    verseEnd: s.verseEnd,
+    rawText: `${s.book} ${s.chapter}:${s.verseStart}${s.verseEnd ? `-${s.verseEnd}` : ''}`,
+    osis: `${s.book}.${s.chapter}.${s.verseStart}`,
+    verses: s.verses,
+    timestamp: s.timestamp,
+  }), []);
+
+  const streamingToDetected = useCallback((s: StreamingScripture): DetectedScripture => ({
+    id: s.id,
+    book: s.book,
+    chapter: s.chapter,
+    verseStart: s.verse,
+    verseEnd: s.verseEnd,
+    rawText: `${s.book} ${s.chapter}:${s.verse}${s.verseEnd ? `-${s.verseEnd}` : ''}`,
+    osis: `${s.book}.${s.chapter}.${s.verse}`,
+    verses: s.verses,
+    timestamp: s.detectedAt,
+  }), []);
+
+  // Broadcast all detected scriptures to live page (dedup handled by useBroadcast)
+  const prevBroadcastedRef = useRef<number>(0);
+  const prevEnhancedBroadcastedRef = useRef<number>(0);
+  const prevStreamingBroadcastedRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (detectedScriptures.length > prevBroadcastedRef.current) {
+      const newScriptures = detectedScriptures.slice(prevBroadcastedRef.current);
+      for (const scripture of newScriptures) {
+        broadcastScripture(roomCode, scripture);
+      }
+      prevBroadcastedRef.current = detectedScriptures.length;
+    }
+  }, [detectedScriptures, roomCode, broadcastScripture]);
+
+  useEffect(() => {
+    if (enhancedScriptures.length > prevEnhancedBroadcastedRef.current) {
+      const newScriptures = enhancedScriptures.slice(prevEnhancedBroadcastedRef.current);
+      for (const scripture of newScriptures) {
+        broadcastScripture(roomCode, enhancedToDetected(scripture));
+      }
+      prevEnhancedBroadcastedRef.current = enhancedScriptures.length;
+    }
+  }, [enhancedScriptures, roomCode, broadcastScripture, enhancedToDetected]);
+
+  useEffect(() => {
+    if (streamingScriptures.length > prevStreamingBroadcastedRef.current) {
+      const newScriptures = streamingScriptures.slice(prevStreamingBroadcastedRef.current);
+      for (const scripture of newScriptures) {
+        broadcastScripture(roomCode, streamingToDetected(scripture));
+      }
+      prevStreamingBroadcastedRef.current = streamingScriptures.length;
+    }
+  }, [streamingScriptures, roomCode, broadcastScripture, streamingToDetected]);
+
   // Handle interim text for streaming detection
   const handleInterim = useCallback(
     (text: string) => {
@@ -102,6 +202,12 @@ export default function AdminPage() {
   // Handle final transcript
   const handleTranscript = useCallback(
     async (segment: TranscriptSegment) => {
+      // Broadcast transcript to live page
+      broadcastTranscript(roomCode, segment);
+
+      // Feed text to sermon notes generator
+      addNotesText(segment.text);
+
       // Process final text through streaming detection
       await processFinal(segment.text);
 
@@ -119,7 +225,7 @@ export default function AdminPage() {
         detectWithGPT(recentTextRef.current, segment.isFinal);
       }
     },
-    [processFinal, processEnhancedSegment, processSegment, detectWithGPT]
+    [roomCode, broadcastTranscript, addNotesText, processFinal, processEnhancedSegment, processSegment, detectWithGPT]
   );
 
   const {
@@ -127,8 +233,8 @@ export default function AdminPage() {
     isSupported,
     transcript,
     interimText,
-    startRecording,
-    stopRecording,
+    startRecording: _startRecording,
+    stopRecording: _stopRecording,
     clearTranscript,
     error: transcriptError,
     transcriptionSource,
@@ -136,6 +242,17 @@ export default function AdminPage() {
     onTranscript: handleTranscript,
     onInterim: handleInterim,
   });
+
+  // Wrap start/stop recording to broadcast status
+  const startRecording = useCallback(() => {
+    _startRecording();
+    broadcastStatus(roomCode, { isRecording: true, isConnected: true });
+  }, [_startRecording, roomCode, broadcastStatus]);
+
+  const stopRecording = useCallback(() => {
+    _stopRecording();
+    broadcastStatus(roomCode, { isRecording: false, isConnected: true });
+  }, [_stopRecording, roomCode, broadcastStatus]);
 
   // Also detect on interim text for real-time feel
   const prevInterimRef = useRef<string>('');
@@ -165,9 +282,14 @@ export default function AdminPage() {
     clearGPTScriptures();
     clearEnhancedScriptures();
     clearStreamingScriptures();
+    clearSermonNotes();
     recentTextRef.current = '';
     syncedGPTScripturesRef.current.clear();
-  }, [clearTranscript, clearScriptures, clearGPTScriptures, clearEnhancedScriptures, clearStreamingScriptures]);
+    prevBroadcastedRef.current = 0;
+    prevEnhancedBroadcastedRef.current = 0;
+    prevStreamingBroadcastedRef.current = 0;
+    broadcastClear(roomCode);
+  }, [clearTranscript, clearScriptures, clearGPTScriptures, clearEnhancedScriptures, clearStreamingScriptures, clearSermonNotes, roomCode, broadcastClear]);
 
   // Handle scripture click from transcript
   const handleScriptureClick = useCallback((ref: ScriptureReference) => {
@@ -183,7 +305,23 @@ export default function AdminPage() {
     }
   }, [detectedScriptures]);
 
+  // Warn before leaving when recording or transcript exists
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isRecording || transcript.length > 0) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isRecording, transcript.length]);
+
   const error = transcriptError || deviceError || gptError;
+
+  // Generate live URL with room code
+  const liveUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/live?room=${roomCode}`
+    : `/live?room=${roomCode}`;
 
   return (
     <div className="min-h-screen bg-[#030303]">
@@ -192,27 +330,52 @@ export default function AdminPage() {
         <div className="absolute inset-0 bg-[#030303]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-950/30 via-transparent to-transparent" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-purple-950/20 via-transparent to-transparent" />
-        <div className="absolute top-1/4 right-1/4 w-[600px] h-[600px] bg-purple-900/[0.12] rounded-full blur-[120px]" />
-        <div className="absolute bottom-1/4 left-1/4 w-[400px] h-[400px] bg-blue-900/10 rounded-full blur-[100px]" />
+        <div className="hidden md:block absolute top-1/4 right-1/4 w-[600px] h-[600px] bg-purple-900/[0.12] rounded-full blur-[120px]" />
+        <div className="hidden md:block absolute bottom-1/4 left-1/4 w-[400px] h-[400px] bg-blue-900/10 rounded-full blur-[100px]" />
       </div>
 
       {/* Content */}
       <div className="relative z-10 min-h-screen flex flex-col">
         {/* Header */}
         <header className={`glass border-b border-white/5 ${mounted ? 'animate-fade-in' : 'opacity-0'}`}>
-          <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="max-w-[1600px] mx-auto px-3 md:px-6 lg:px-8 py-3 md:py-4 flex items-center justify-between">
+            <div className="flex items-center gap-2 md:gap-4 min-w-0">
+              <Link href="/" className="flex items-center gap-2 md:gap-3 hover:opacity-80 transition-opacity shrink-0">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg md:rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+                  <svg className="w-4 h-4 md:w-5 md:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                   </svg>
                 </div>
                 <div>
-                  <span className="text-xl font-bold text-white">SermonFlow</span>
-                  <span className="hidden sm:block text-xs text-gray-500">Dashboard</span>
+                  <span className="hidden sm:inline text-xl font-bold text-white">SermonFlow</span>
+                  <span className="hidden md:block text-xs text-gray-500">Dashboard</span>
                 </div>
               </Link>
+
+              {/* Room Code Badge */}
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(roomCode);
+                  setRoomCodeCopied(true);
+                  setTimeout(() => setRoomCodeCopied(false), 2000);
+                }}
+                className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 rounded-full border border-blue-500/20 hover:bg-blue-500/20 transition-all cursor-pointer"
+                title="Click to copy room code"
+              >
+                <svg className="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                </svg>
+                <span className="text-blue-400 text-xs font-mono font-bold tracking-wider">{roomCode}</span>
+                {roomCodeCopied ? (
+                  <svg className="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  <svg className="w-3 h-3 text-blue-400/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                )}
+              </button>
 
               {/* Status Pills */}
               <div className="hidden md:flex items-center gap-2 ml-4">
@@ -249,6 +412,12 @@ export default function AdminPage() {
                     <span className="text-blue-400 text-xs font-medium">Processing</span>
                   </div>
                 )}
+                {isGeneratingNotes && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/20 rounded-full">
+                    <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                    <span className="text-green-400 text-xs font-medium">Generating Notes...</span>
+                  </div>
+                )}
                 {pendingReference && (
                   <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/20 rounded-full">
                     <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -258,11 +427,11 @@ export default function AdminPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 md:gap-3 shrink-0">
               {/* Share Button - Secondary */}
               <button
                 onClick={() => setShowQRModal(true)}
-                className="flex items-center gap-2 px-4 py-2.5 glass border border-white/10 hover:border-white/20 hover:bg-white/10 text-gray-300 text-sm font-medium rounded-xl transition-all"
+                className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 glass border border-white/10 hover:border-white/20 hover:bg-white/10 text-gray-300 text-sm font-medium rounded-xl transition-all"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
@@ -272,10 +441,10 @@ export default function AdminPage() {
 
               {/* Live View Link - Primary */}
               <a
-                href="/live"
+                href={`/live?room=${roomCode}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-sm font-medium rounded-xl transition-all shadow-lg shadow-blue-500/20"
+                className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-sm font-medium rounded-xl transition-all shadow-lg shadow-blue-500/20"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -306,16 +475,15 @@ export default function AdminPage() {
           {/* Control Bar */}
           <div className={`relative p-[1px] rounded-2xl bg-gradient-to-b from-purple-500/20 via-purple-500/10 to-purple-500/5 ${mounted ? 'animate-fade-in-up' : 'opacity-0'}`}>
             <div className="rounded-2xl p-4 md:p-5 bg-[#0c0c10]">
-              {/* Mobile: Stack vertically, Desktop: Row */}
-              <div className="space-y-3 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-4">
+              <div className="space-y-3 md:space-y-0 md:flex md:items-center md:gap-4">
 
-                {/* Row 1: Record + Clear buttons */}
-                <div className="flex items-center gap-2 w-full md:w-auto">
+                {/* Record + Clear */}
+                <div className="flex items-center gap-2">
                   {!isRecording ? (
                     <button
                       onClick={startRecording}
                       disabled={!isSupported || !hasPermission}
-                      className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:from-gray-600 disabled:to-gray-600 text-white font-semibold rounded-xl transition-all shadow-lg shadow-purple-500/20 text-sm md:text-base"
+                      className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:from-gray-600 disabled:to-gray-600 text-white font-semibold rounded-xl transition-all shadow-lg shadow-purple-500/20 text-sm"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
@@ -325,16 +493,16 @@ export default function AdminPage() {
                   ) : (
                     <button
                       onClick={stopRecording}
-                      className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-3 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-red-500/20 text-sm md:text-base"
+                      className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-red-500/20 text-sm"
                     >
                       <div className="w-3 h-3 bg-white rounded-sm animate-pulse" />
-                      Stop
+                      Stop Recording
                     </button>
                   )}
 
                   <button
-                    onClick={handleClear}
-                    className="p-3 glass hover:bg-red-500/10 rounded-xl transition-all border border-white/10 hover:border-red-500/20"
+                    onClick={() => setShowClearConfirm(true)}
+                    className="p-2.5 glass hover:bg-red-500/10 rounded-xl transition-all border border-white/10 hover:border-red-500/20 shrink-0"
                     title="Clear all"
                   >
                     <svg className="w-4 h-4 text-gray-400 hover:text-red-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -344,76 +512,146 @@ export default function AdminPage() {
                 </div>
 
                 {/* Divider - desktop only */}
-                <div className="hidden md:block w-px h-10 bg-white/10" />
+                <div className="hidden md:block w-px h-10 bg-white/10 shrink-0" />
 
-                {/* Row 2: Microphone + Translation selects */}
-                <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto md:flex-1">
-                  {/* Microphone Select */}
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                {/* Microphone Select */}
+                <div className="flex items-center gap-2 min-w-0 flex-1 md:max-w-lg">
+                  <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                  </svg>
+                  <select
+                    value={selectedDevice || ''}
+                    onChange={(e) => selectDevice(e.target.value)}
+                    className="flex-1 min-w-0 px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500/50 transition-colors"
+                  >
+                    {devices.length === 0 && (
+                      <option value="" disabled className="bg-gray-900 text-gray-500">
+                        Select mic...
+                      </option>
+                    )}
+                    {devices.map((device) => (
+                      <option key={device.deviceId} value={device.deviceId} className="bg-gray-900">
+                        {device.label || `Mic ${device.deviceId.slice(0, 5)}...`}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={refreshDevices}
+                    className="p-2.5 glass hover:bg-white/10 rounded-xl transition-all border border-white/10 shrink-0"
+                    title="Refresh"
+                  >
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
-                    <select
-                      value={selectedDevice || ''}
-                      onChange={(e) => selectDevice(e.target.value)}
-                      className="flex-1 min-w-0 px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500/50 transition-colors truncate"
-                    >
-                      {devices.length === 0 && (
-                        <option value="" disabled className="bg-gray-900 text-gray-500">
-                          Select mic...
-                        </option>
-                      )}
-                      {devices.map((device) => (
-                        <option key={device.deviceId} value={device.deviceId} className="bg-gray-900">
-                          {device.label || `Mic ${device.deviceId.slice(0, 5)}...`}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={refreshDevices}
-                      className="p-2.5 glass hover:bg-white/10 rounded-xl transition-all border border-white/10 shrink-0"
-                      title="Refresh"
-                    >
-                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                    </button>
-                  </div>
-
-                  {/* Translation Select */}
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                    </svg>
-                    <select
-                      value={translation}
-                      onChange={(e) => {
-                        const newTranslation = e.target.value as BibleTranslation;
-                        setTranslation(newTranslation);
-                        setScriptureTranslation(newTranslation);
-                        setStreamingTranslation(newTranslation);
-                      }}
-                      className="flex-1 sm:flex-none px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500/50 transition-colors"
-                    >
-                      <optgroup label="Offline" className="bg-gray-900 text-gray-400">
-                        {TRANSLATIONS.filter(t => t.isPublicDomain).map((t) => (
-                          <option key={t.code} value={t.code} className="bg-gray-900 text-white">
-                            {t.code}
-                          </option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="Premium" className="bg-gray-900 text-gray-400">
-                        {TRANSLATIONS.filter(t => !t.isPublicDomain).map((t) => (
-                          <option key={t.code} value={t.code} className="bg-gray-900 text-white">
-                            {t.code}
-                          </option>
-                        ))}
-                      </optgroup>
-                    </select>
-                  </div>
+                  </button>
                 </div>
 
-              {/* Permission Request */}
+                {/* Translation Select */}
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                  <select
+                    value={translation}
+                    onChange={(e) => {
+                      const newTranslation = e.target.value as BibleTranslation;
+                      setTranslation(newTranslation);
+                      setScriptureTranslation(newTranslation);
+                      setStreamingTranslation(newTranslation);
+                    }}
+                    className="flex-1 md:flex-none px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500/50 transition-colors"
+                  >
+                    <optgroup label="Offline" className="bg-gray-900 text-gray-400">
+                      {TRANSLATIONS.filter(t => t.isPublicDomain).map((t) => (
+                        <option key={t.code} value={t.code} className="bg-gray-900 text-white">
+                          {t.code}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Premium" className="bg-gray-900 text-gray-400">
+                      {TRANSLATIONS.filter(t => !t.isPublicDomain).map((t) => (
+                        <option key={t.code} value={t.code} className="bg-gray-900 text-white">
+                          {t.code}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </div>
+
+                {/* Divider - desktop only */}
+                <div className="hidden md:block w-px h-10 bg-white/10 shrink-0" />
+
+                {/* Manual Scripture Input */}
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!manualInput.trim() || isAddingManual) return;
+
+                    setIsAddingManual(true);
+                    const match = manualInput.match(/^(\d?\s*[A-Za-z]+)\s+(\d+):(\d+)(?:-(\d+))?$/);
+                    if (match) {
+                      // Exact reference like "John 3:16"
+                      const [, book, chapter, verseStart, verseEnd] = match;
+                      await addScriptureByRef(
+                        book.trim(),
+                        parseInt(chapter),
+                        parseInt(verseStart),
+                        verseEnd ? parseInt(verseEnd) : undefined
+                      );
+                      setManualInput('');
+                      setActiveTab('verses');
+                      setIsAddingManual(false);
+                    } else {
+                      // Contextual search via AI (e.g. "and just wept", "love is patient")
+                      try {
+                        const res = await fetch('/api/detect-scripture', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ text: manualInput.trim(), mode: 'search' }),
+                        });
+                        const data = await res.json();
+                        if (data.scriptures && data.scriptures.length > 0) {
+                          for (const s of data.scriptures) {
+                            await addScriptureByRef(s.book, s.chapter, s.verse, s.verseEnd);
+                          }
+                          setManualInput('');
+                          setActiveTab('verses');
+                        }
+                      } catch (err) {
+                        console.error('AI search failed:', err);
+                      }
+                      setIsAddingManual(false);
+                    }
+                  }}
+                  className="flex items-center gap-2 min-w-0 flex-1"
+                >
+                  <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  <input
+                    type="text"
+                    value={manualInput}
+                    onChange={(e) => setManualInput(e.target.value)}
+                    placeholder="John 3:16 or 'Jesus wept'"
+                    className="flex-1 min-w-0 px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-gray-500 outline-none ring-0 focus:outline-none focus:ring-0 focus:border-purple-500/50 transition-colors"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!manualInput.trim() || isAddingManual}
+                    className="p-2.5 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-xl transition-all shrink-0"
+                    title="Add Scripture or search by context"
+                  >
+                    {isAddingManual ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    )}
+                  </button>
+                </form>
+
+                {/* Permission Request */}
                 {!hasPermission && (
                   <button
                     onClick={requestPermission}
@@ -559,6 +797,15 @@ export default function AdminPage() {
                       scriptures={gptScriptures}
                       isDetecting={isDetecting}
                       error={gptError}
+                      onSelect={async (scripture) => {
+                        await addScriptureByRef(
+                          scripture.book,
+                          scripture.chapter,
+                          scripture.verse,
+                          scripture.verseEnd
+                        );
+                        setActiveTab('verses');
+                      }}
                     />
                   </div>
                 ) : detectedScriptures.length === 0 ? (
@@ -576,22 +823,83 @@ export default function AdminPage() {
                     {detectedScriptures.map((scripture) => (
                       <div
                         key={scripture.id}
-                        className={`rounded-xl p-5 bg-white/5 border border-white/5 border-l-4 transition-all ${
+                        className={`rounded-xl bg-white/5 border border-white/5 border-l-4 transition-all ${
                           highlightedScriptureId === scripture.id
                             ? 'border-l-yellow-500 bg-yellow-500/10'
                             : 'border-l-purple-500'
                         }`}
                       >
-                        <div className="text-lg font-semibold text-white mb-2">
-                          {scripture.book} {scripture.chapter}:{scripture.verseStart}
-                          {scripture.verseEnd && scripture.verseEnd !== scripture.verseStart && `-${scripture.verseEnd}`}
+                        {/* Header with reference + nav */}
+                        <div className="flex items-center justify-between px-5 pt-4 pb-2">
+                          <div className="text-lg font-semibold text-white">
+                            {scripture.book} {scripture.chapter}:{scripture.verseStart}
+                            {scripture.verseEnd && scripture.verseEnd !== scripture.verseStart && `-${scripture.verseEnd}`}
+                          </div>
+                          <div className="flex items-center gap-0.5 bg-white/5 rounded-lg p-0.5">
+                            <button
+                              onClick={() => navigateVerse(scripture.id, 'prev')}
+                              disabled={scripture.verseStart <= 1}
+                              className="p-2 rounded-md hover:bg-white/10 active:bg-white/20 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+                              title="Previous verse"
+                            >
+                              <svg className="w-3.5 h-3.5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+                              </svg>
+                            </button>
+                            <span className="text-xs text-gray-500 font-medium px-1.5 min-w-[2rem] text-center tabular-nums">
+                              :{scripture.verseStart}
+                            </span>
+                            <button
+                              onClick={() => navigateVerse(scripture.id, 'next')}
+                              className="p-2 rounded-md hover:bg-white/10 active:bg-white/20 transition-all"
+                              title="Next verse"
+                            >
+                              <svg className="w-3.5 h-3.5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                          </div>
                         </div>
-                        {scripture.verses.map((verse, i) => (
-                          <p key={i} className="text-gray-300 text-sm leading-relaxed">
-                            {verse.text}
-                          </p>
-                        ))}
-                        <div className="mt-3 text-xs text-gray-500">{scripture.verses[0]?.translation || translation} Translation</div>
+
+                        {/* Verse text */}
+                        <div className="px-5 pb-4">
+                          {scripture.verses.map((verse, i) => (
+                            <p key={i} className="text-gray-300 text-sm leading-relaxed">
+                              {verse.text}
+                            </p>
+                          ))}
+                          <div className="mt-3 flex items-center justify-between">
+                            <span className="text-xs text-gray-500">{scripture.verses[0]?.translation || translation} Translation</span>
+                            <button
+                              onClick={() => {
+                                const ref = `${scripture.book} ${scripture.chapter}:${scripture.verseStart}${scripture.verseEnd && scripture.verseEnd !== scripture.verseStart ? `-${scripture.verseEnd}` : ''}`;
+                                const verseText = scripture.verses.map(v => v.text).join(' ');
+                                const copyText = `${ref} (${scripture.verses[0]?.translation || translation})\n${verseText}`;
+                                navigator.clipboard.writeText(copyText);
+                                setCopiedId(scripture.id);
+                                setTimeout(() => setCopiedId(null), 2000);
+                              }}
+                              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-white/10 active:bg-white/20 transition-all text-xs text-gray-400 hover:text-gray-200"
+                              title="Copy verse"
+                            >
+                              {copiedId === scripture.id ? (
+                                <>
+                                  <svg className="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  <span className="text-green-400">Copied</span>
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                  Copy
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -603,10 +911,25 @@ export default function AdminPage() {
         </main>
       </div>
 
-      {/* QR Code Modal */}
+      {/* QR Code Modal — now with room-aware URL */}
       <QRCodeModal
         isOpen={showQRModal}
         onClose={() => setShowQRModal(false)}
+        url={liveUrl}
+      />
+
+      {/* Clear Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showClearConfirm}
+        onCancel={() => setShowClearConfirm(false)}
+        onConfirm={() => {
+          handleClear();
+          setShowClearConfirm(false);
+        }}
+        title="Clear Everything"
+        message="This will clear the transcript, all detected scriptures, and sermon notes. This action cannot be undone. Connected live viewers will also be cleared."
+        confirmLabel="Clear All"
+        confirmVariant="danger"
       />
     </div>
   );

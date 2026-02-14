@@ -60,7 +60,7 @@ Example output:
 
 export async function POST(request: NextRequest) {
   try {
-    const { text } = await request.json();
+    const { text, mode } = await request.json();
 
     if (!text || typeof text !== 'string') {
       return NextResponse.json(
@@ -69,8 +69,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Skip if text is too short
-    if (text.trim().length < 30) {
+    // Skip if text is too short (unless it's a manual search)
+    if (mode !== 'search' && text.trim().length < 30) {
       return NextResponse.json({ scriptures: [] });
     }
 
@@ -82,9 +82,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const userPrompt = mode === 'search'
+      ? `The user is searching for a Bible verse. Find the most likely Bible scripture that matches this phrase, quote, context, character, event, or topic. The input may contain typos, misspellings, or partial names — use your best judgement to match the intended reference (e.g. "shumaite woman" = Shunammite woman = 2 Kings 4, "jessus wept" = Jesus wept = John 11:35). Always return at least one best match.\n\nSearch: "${text}"`
+      : `Analyze this sermon transcript for Bible references:\n\n"${text}"`;
+
     const messages: OpenAIMessage[] = [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `Analyze this sermon transcript for Bible references:\n\n"${text}"` }
+      { role: 'user', content: userPrompt }
     ];
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {

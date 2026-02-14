@@ -186,6 +186,14 @@ export function useStreamingScriptureDetection(
           const result = processInterimText(text, stateRef.current);
           stateRef.current = result.state;
 
+          // Update current book/chapter from streaming state for context tracking
+          if (result.state.currentBook) {
+            setCurrentBook(result.state.currentBook);
+          }
+          if (result.state.currentChapter) {
+            setCurrentChapter(result.state.currentChapter);
+          }
+
           // Handle prefetch
           if (result.shouldPrefetch) {
             handlePrefetch(result.shouldPrefetch.book, result.shouldPrefetch.chapter);
@@ -198,11 +206,11 @@ export function useStreamingScriptureDetection(
             // Skip if already confirmed
             if (processedIdsRef.current.has(key)) continue;
 
-            // Track stability
+            // Track stability - reduced from 350ms to 150ms for faster detection
             const { isStable, match: trackedMatch } = trackStableMatch(
               match,
               stateRef.current.pendingMatches,
-              350 // 350ms stability threshold
+              150 // 150ms stability threshold - fast enough for African preaching
             );
 
             if (isStable && match.type === 'complete') {
@@ -257,7 +265,7 @@ export function useStreamingScriptureDetection(
         } finally {
           setIsProcessing(false);
         }
-      }, 50); // 50ms debounce
+      }, 30); // 30ms debounce - reduced for faster response
     },
     [handlePrefetch, getVerses, onScriptureDetected]
   );

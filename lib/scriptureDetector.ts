@@ -1,5 +1,5 @@
 import type { ScriptureReference } from '@/types';
-import { normalizeSpokenText, mightContainScripture } from './normalizeSpoken';
+import { normalizeSpokenText, mightContainScripture, resolveRelativeReferences, type ActiveScriptureContext } from './normalizeSpoken';
 
 // bible-passage-reference-parser provides a global bcv_parser when loaded
 // We'll dynamically import it since it's a browser library
@@ -215,8 +215,11 @@ function formatDetectedBook(book: string): string {
 /**
  * Detect scripture references in text
  * Uses regex-based detection for reliability
+ *
+ * @param text - The text to analyze
+ * @param context - Optional active scripture context for resolving relative references like "verse 6"
  */
-export function detectScriptures(text: string): ScriptureReference[] {
+export function detectScriptures(text: string, context?: ActiveScriptureContext | null): ScriptureReference[] {
   // Quick check if text might contain scripture
   if (!mightContainScripture(text)) {
     console.log('[ScriptureDetector] No potential scripture found in:', text);
@@ -224,10 +227,17 @@ export function detectScriptures(text: string): ScriptureReference[] {
   }
 
   console.log('[ScriptureDetector] Processing:', text);
+  console.log('[ScriptureDetector] Context:', context);
 
   // Normalize spoken text
-  const normalized = normalizeSpokenText(text);
+  let normalized = normalizeSpokenText(text);
   console.log('[ScriptureDetector] Normalized:', normalized);
+
+  // Resolve relative references if we have context
+  if (context) {
+    normalized = resolveRelativeReferences(normalized, context);
+    console.log('[ScriptureDetector] After context resolution:', normalized);
+  }
 
   // Use regex detection (most reliable)
   const results = detectWithRegex(normalized);

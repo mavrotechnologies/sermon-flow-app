@@ -57,16 +57,42 @@ function normalizeChapterVerse(text: string): string {
         '$1:$2'
     );
 
-    // Pattern: "chapter X verses Y through/to Z" → "X:Y-Z"
+    // Pattern: "chapter X verses Y through/to/and Z" → "X:Y-Z"
     normalized = normalized.replace(
-        /chapter\s+(\d+)\s+verses?\s+(\d+)\s+(?:through|to|thru)\s+(\d+)/gi,
+        /chapter\s+(\d+)\s+verses?\s+(\d+)\s+(?:through|to|thru|and)\s+(\d+)/gi,
         '$1:$2-$3'
     );
 
-    // Pattern: "verses X through Y" → "X-Y" (when chapter already specified)
+    // Pattern: "chapter X from verse Y and/to Z" → "X:Y-Z"
     normalized = normalized.replace(
-        /verses?\s+(\d+)\s+(?:through|to|thru)\s+(\d+)/gi,
+        /chapter\s+(\d+)\s+from\s+verses?\s+(\d+)\s+(?:through|to|thru|and)\s+(\d+)/gi,
+        '$1:$2-$3'
+    );
+
+    // Pattern: "chapter X from verse Y" → "X:Y"
+    normalized = normalized.replace(
+        /chapter\s+(\d+)\s+from\s+verses?\s+(\d+)/gi,
+        '$1:$2'
+    );
+
+    // Pattern: "verses X through/and Y" → "X-Y" (when chapter already specified)
+    normalized = normalized.replace(
+        /verses?\s+(\d+)\s+(?:through|to|thru|and)\s+(\d+)/gi,
         '$1-$2'
+    );
+
+    // Pattern: "from X to Y" → "X-Y" (just numbers, no "verse" keyword)
+    // Handles: "from 5 to 8", "from 1 to 10"
+    normalized = normalized.replace(
+        /\bfrom\s+(\d+)\s+(?:to|through|thru)\s+(\d+)\b/gi,
+        '$1-$2'
+    );
+
+    // Pattern: "X to Y" after a colon or verse context → "X-Y"
+    // Handles: "chapter 8:5 to 8" or context where we know it's verses
+    normalized = normalized.replace(
+        /:(\d+)\s+(?:to|through|thru)\s+(\d+)\b/gi,
+        ':$1-$2'
     );
 
     // Pattern: "verse X" → ":X" (needs chapter context)
@@ -124,6 +150,24 @@ function convertSpokenNumbers(text: string): string {
 }
 
 /**
+ * Convert "Book X Y" pattern to "Book X:Y" when X and Y are both numbers
+ * e.g., "Jeremiah 1 5" → "Jeremiah 1:5"
+ * e.g., "John 3 16" → "John 3:16"
+ */
+function normalizeSpacedReferences(text: string): string {
+    const books = 'genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|ruth|samuel|kings|chronicles|ezra|nehemiah|esther|job|psalms?|proverbs|ecclesiastes|song|isaiah|jeremiah|lamentations|ezekiel|daniel|hosea|joel|amos|obadiah|jonah|micah|nahum|habakkuk|zephaniah|haggai|zechariah|malachi|matthew|mark|luke|john|acts|romans|corinthians|galatians|ephesians|philippians|colossians|thessalonians|timothy|titus|philemon|hebrews|james|peter|jude|revelation';
+
+    // Pattern: "Book X Y" where X and Y are numbers with just space between them
+    // Handles: "John 3 16", "Jeremiah 1 5", "1 Corinthians 13 4"
+    const pattern = new RegExp(
+        `((?:1|2|3)?\\s*(?:${books}))\\s+(\\d+)\\s+(\\d+)(?!\\d|:)`,
+        'gi'
+    );
+
+    return text.replace(pattern, '$1 $2:$3');
+}
+
+/**
  * Main normalization function
  * Applies all normalization steps to convert spoken text to parser-friendly format
  */
@@ -136,8 +180,11 @@ export function normalizeSpokenText(text: string): string {
     // Step 2: Normalize ordinal book names
     normalized = normalizeBookNames(normalized);
 
-    // Step 3: Normalize chapter/verse patterns
+    // Step 3: Normalize chapter/verse patterns (explicit "chapter X verse Y")
     normalized = normalizeChapterVerse(normalized);
+
+    // Step 4: Convert spaced references to colon format ("Book X Y" → "Book X:Y")
+    normalized = normalizeSpacedReferences(normalized);
 
     return normalized;
 }
@@ -151,5 +198,51 @@ export function mightContainScripture(text: string): boolean {
 
     const chapterVersePattern = /\d+[:\s]+\d+/;
 
-    return bibleBookPattern.test(text) || chapterVersePattern.test(text);
+    // Also check for relative references like "verse 5" or "verse six"
+    const relativeVersePattern = /\bverse\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/i;
+
+    return bibleBookPattern.test(text) || chapterVersePattern.test(text) || relativeVersePattern.test(text);
+}
+
+/**
+ * Context for resolving relative scripture references
+ */
+export interface ActiveScriptureContext {
+    book: string;
+    chapter: number;
+}
+
+/**
+ * Resolve relative verse references using session context
+ * e.g., "verse 6" with context {book: "Jeremiah", chapter: 1} → "Jeremiah 1:6"
+ * e.g., "verses 6 and 7" with context → "Jeremiah 1:6-7"
+ */
+export function resolveRelativeReferences(text: string, context: ActiveScriptureContext | null): string {
+    if (!context) return text;
+
+    let result = text;
+
+    // Pattern: "verse X" (standalone verse reference)
+    // Only match if there's no book name nearby (within ~30 chars before)
+    const verseOnlyPattern = /(?<!\b(?:genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|ruth|samuel|kings|chronicles|ezra|nehemiah|esther|job|psalms?|proverbs|ecclesiastes|song|isaiah|jeremiah|lamentations|ezekiel|daniel|hosea|joel|amos|obadiah|jonah|micah|nahum|habakkuk|zephaniah|haggai|zechariah|malachi|matthew|mark|luke|john|acts|romans|corinthians|galatians|ephesians|philippians|colossians|thessalonians|timothy|titus|philemon|hebrews|james|peter|jude|revelation)\s+\d+\s*[:\s]\s*)\bverse\s+(\d+)\b(?!\s*[-–]\s*\d)/gi;
+
+    result = result.replace(verseOnlyPattern, (match, verse) => {
+        return `${context.book} ${context.chapter}:${verse}`;
+    });
+
+    // Pattern: "verses X and Y" or "verses X through Y" (range)
+    const verseRangePattern = /\bverses?\s+(\d+)\s+(?:and|through|to|thru)\s+(\d+)\b/gi;
+
+    result = result.replace(verseRangePattern, (match, start, end) => {
+        // Check if this is already part of a full reference (has book before it)
+        const beforeMatch = result.substring(0, result.indexOf(match));
+        const hasBookBefore = /\b(?:genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|ruth|samuel|kings|chronicles|ezra|nehemiah|esther|job|psalms?|proverbs|ecclesiastes|song|isaiah|jeremiah|lamentations|ezekiel|daniel|hosea|joel|amos|obadiah|jonah|micah|nahum|habakkuk|zephaniah|haggai|zechariah|malachi|matthew|mark|luke|john|acts|romans|corinthians|galatians|ephesians|philippians|colossians|thessalonians|timothy|titus|philemon|hebrews|james|peter|jude|revelation)\s*$/i.test(beforeMatch.slice(-50));
+
+        if (hasBookBefore) {
+            return `${start}-${end}`; // Just return the range, book is already there
+        }
+        return `${context.book} ${context.chapter}:${start}-${end}`;
+    });
+
+    return result;
 }

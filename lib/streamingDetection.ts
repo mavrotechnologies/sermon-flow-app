@@ -13,7 +13,9 @@
 
 import { detectScriptures } from './scriptureDetector';
 import { searchPopularVerseCache } from './popularVerseCache';
+import { normalizeSpokenText } from './normalizeSpoken';
 import type { ScriptureReference, BibleVerse, BibleTranslation } from '@/types';
+import type { ActiveScriptureContext } from './normalizeSpoken';
 import { lookupVerses } from './verseLookup';
 
 // All 66 Bible book names and common abbreviations for early detection
@@ -256,7 +258,10 @@ export function processInterimText(
   earlyMatches: StreamingMatch[];
   shouldPrefetch: { book: string; chapter?: number } | null;
 } {
-  const words = text.trim().split(/\s+/);
+  // Normalize spoken text first (converts "one" to "1", handles "chapter X verse Y", etc.)
+  const normalizedText = normalizeSpokenText(text);
+
+  const words = normalizedText.trim().split(/\s+/);
   const earlyMatches: StreamingMatch[] = [];
   let shouldPrefetch: { book: string; chapter?: number } | null = null;
 
@@ -273,8 +278,14 @@ export function processInterimText(
     }
   }
 
-  // Run regex detection on the full interim text for complete references
-  const regexMatches = detectScriptures(text);
+  // Build active context for relative reference resolution
+  const activeContext: ActiveScriptureContext | null =
+    state.currentBook && state.currentChapter
+      ? { book: state.currentBook, chapter: state.currentChapter }
+      : null;
+
+  // Run regex detection on the normalized text with context for relative references
+  const regexMatches = detectScriptures(normalizedText, activeContext);
   for (const match of regexMatches) {
     const key = `${match.book}-${match.chapter}-${match.verseStart}`;
     if (!state.confirmedMatches.has(key)) {
@@ -293,8 +304,8 @@ export function processInterimText(
     }
   }
 
-  // Also check popular verse cache for quick matches
-  const cacheMatches = searchPopularVerseCache(text, 10);
+  // Also check popular verse cache for quick matches (use normalized text)
+  const cacheMatches = searchPopularVerseCache(normalizedText, 10);
   for (const match of cacheMatches) {
     if (match.confidence === 'high') {
       const key = `${match.verse.book}-${match.verse.chapter}-${match.verse.verseStart}`;

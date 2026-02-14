@@ -38,10 +38,26 @@ export interface AudioDevice {
   kind: MediaDeviceKind;
 }
 
+// Sermon Notes Types
+export interface SermonNote {
+  id: string;
+  timestamp: number;
+  mainPoint: string;
+  subPoints: string[];
+  scriptureReferences: string[];
+  keyQuote?: string;
+  theme?: string;
+}
+
+export interface SermonNotesPayload {
+  notes: SermonNote[];
+  isGenerating: boolean;
+}
+
 // Broadcast Types
 export interface BroadcastMessage {
-  type: 'transcript' | 'scripture' | 'status' | 'clear';
-  payload: TranscriptSegment | DetectedScripture | StatusPayload | null;
+  type: 'transcript' | 'scripture' | 'status' | 'clear' | 'notes';
+  payload: TranscriptSegment | DetectedScripture | StatusPayload | SermonNotesPayload | null;
   timestamp: number;
 }
 

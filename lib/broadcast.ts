@@ -1,23 +1,39 @@
-import type {BroadcastMessage, DetectedScripture, StatusPayload, TranscriptSegment} from '@/types';
+import type {BroadcastMessage, DetectedScripture, SermonNotesPayload, StatusPayload, TranscriptSegment} from '@/types';
 
 /**
- * Broadcast manager for Server-Sent Events (SSE)
- * Manages connected clients and message broadcasting
+ * Room-aware Broadcast manager for Server-Sent Events (SSE)
+ * Manages connected clients per room and message broadcasting
  */
 
 type ClientController = ReadableStreamDefaultController<Uint8Array>;
 
+/**
+ * Generate a random 6-character alphanumeric room code
+ */
+export function generateRoomCode(): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excludes confusing chars: I,O,0,1
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+}
+
 class BroadcastManager {
-    private clients: Set<ClientController> = new Set();
+    // Map of roomId -> Set of connected client controllers
+    private rooms: Map<string, Set<ClientController>> = new Map();
     private encoder = new TextEncoder();
     private messageId = 0;
 
     /**
-     * Add a new client connection
+     * Add a new client connection to a room
      */
-    addClient(controller: ClientController): void {
-        this.clients.add(controller);
-        console.log(`Client connected. Total clients: ${this.clients.size}`);
+    addClient(roomId: string, controller: ClientController): void {
+        if (!this.rooms.has(roomId)) {
+            this.rooms.set(roomId, new Set());
+        }
+        this.rooms.get(roomId)!.add(controller);
+        console.log(`Client connected to room ${roomId}. Room clients: ${this.rooms.get(roomId)!.size}`);
 
         // Send initial connection confirmation
         this.sendToClient(controller, {
@@ -28,11 +44,34 @@ class BroadcastManager {
     }
 
     /**
-     * Remove a client connection
+     * Remove a client connection from a room
      */
-    removeClient(controller: ClientController): void {
-        this.clients.delete(controller);
-        console.log(`Client disconnected. Total clients: ${this.clients.size}`);
+    removeClient(roomId: string, controller: ClientController): void {
+        const room = this.rooms.get(roomId);
+        if (room) {
+            room.delete(controller);
+            console.log(`Client disconnected from room ${roomId}. Room clients: ${room.size}`);
+            // Clean up empty rooms
+            if (room.size === 0) {
+                this.rooms.delete(roomId);
+            }
+        }
+    }
+
+    /**
+     * Check if a room exists (has at least been created)
+     */
+    hasRoom(roomId: string): boolean {
+        return this.rooms.has(roomId);
+    }
+
+    /**
+     * Ensure a room exists (admin creates it on page load)
+     */
+    ensureRoom(roomId: string): void {
+        if (!this.rooms.has(roomId)) {
+            this.rooms.set(roomId, new Set());
+        }
     }
 
     /**
@@ -44,7 +83,6 @@ class BroadcastManager {
             controller.enqueue(this.encoder.encode(data));
         } catch (error) {
             console.error('Failed to send to client:', error);
-            this.clients.delete(controller);
         }
     }
 
@@ -57,27 +95,30 @@ class BroadcastManager {
     }
 
     /**
-     * Broadcast message to all connected clients
+     * Broadcast message to all connected clients in a room
      */
-    broadcast(message: BroadcastMessage): void {
+    broadcast(roomId: string, message: BroadcastMessage): void {
+        const room = this.rooms.get(roomId);
+        if (!room) return;
+
         const data = this.formatSSE(message);
         const encoded = this.encoder.encode(data);
 
-        for (const client of this.clients) {
+        for (const client of room) {
             try {
                 client.enqueue(encoded);
             } catch (error) {
                 console.error('Failed to broadcast to client:', error);
-                this.clients.delete(client);
+                room.delete(client);
             }
         }
     }
 
     /**
-     * Broadcast a transcript update
+     * Broadcast a transcript update to a room
      */
-    broadcastTranscript(segment: TranscriptSegment): void {
-        this.broadcast({
+    broadcastTranscript(roomId: string, segment: TranscriptSegment): void {
+        this.broadcast(roomId, {
             type: 'transcript',
             payload: segment,
             timestamp: Date.now(),
@@ -85,10 +126,10 @@ class BroadcastManager {
     }
 
     /**
-     * Broadcast a detected scripture
+     * Broadcast a detected scripture to a room
      */
-    broadcastScripture(scripture: DetectedScripture): void {
-        this.broadcast({
+    broadcastScripture(roomId: string, scripture: DetectedScripture): void {
+        this.broadcast(roomId, {
             type: 'scripture',
             payload: scripture,
             timestamp: Date.now(),
@@ -96,10 +137,10 @@ class BroadcastManager {
     }
 
     /**
-     * Broadcast status update
+     * Broadcast status update to a room
      */
-    broadcastStatus(status: StatusPayload): void {
-        this.broadcast({
+    broadcastStatus(roomId: string, status: StatusPayload): void {
+        this.broadcast(roomId, {
             type: 'status',
             payload: status,
             timestamp: Date.now(),
@@ -107,10 +148,10 @@ class BroadcastManager {
     }
 
     /**
-     * Broadcast clear command
+     * Broadcast clear command to a room
      */
-    broadcastClear(): void {
-        this.broadcast({
+    broadcastClear(roomId: string): void {
+        this.broadcast(roomId, {
             type: 'clear',
             payload: null,
             timestamp: Date.now(),
@@ -118,10 +159,32 @@ class BroadcastManager {
     }
 
     /**
-     * Get number of connected clients
+     * Broadcast sermon notes to a room
      */
-    getClientCount(): number {
-        return this.clients.size;
+    broadcastNotes(roomId: string, payload: SermonNotesPayload): void {
+        this.broadcast(roomId, {
+            type: 'notes',
+            payload,
+            timestamp: Date.now(),
+        });
+    }
+
+    /**
+     * Get number of connected clients in a room
+     */
+    getClientCount(roomId: string): number {
+        return this.rooms.get(roomId)?.size ?? 0;
+    }
+
+    /**
+     * Get total connected clients across all rooms
+     */
+    getTotalClientCount(): number {
+        let total = 0;
+        for (const room of this.rooms.values()) {
+            total += room.size;
+        }
+        return total;
     }
 }
 
@@ -144,6 +207,7 @@ export class SSEClient {
             onScripture?: (scripture: DetectedScripture) => void;
             onStatus?: (status: StatusPayload) => void;
             onClear?: () => void;
+            onNotes?: (payload: SermonNotesPayload) => void;
             onConnect?: () => void;
             onDisconnect?: () => void;
             onError?: (error: string) => void;
@@ -194,6 +258,13 @@ export class SSEClient {
 
             this.eventSource.addEventListener('clear', () => {
                 this.callbacks.onClear?.();
+            });
+
+            this.eventSource.addEventListener('notes', (event) => {
+                const message: BroadcastMessage = JSON.parse(event.data);
+                if (message.payload) {
+                    this.callbacks.onNotes?.(message.payload as SermonNotesPayload);
+                }
             });
         } catch (error) {
             this.callbacks.onError?.(`Failed to connect: ${error}`);

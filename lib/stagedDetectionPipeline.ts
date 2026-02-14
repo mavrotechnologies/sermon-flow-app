@@ -185,9 +185,20 @@ export async function runDetectionPipeline(
   const timings: Record<string, number> = {};
 
   // Stage 1: Regex/BCV Detection (instant)
+  // Pass active context for resolving relative references like "verse 6"
   if (fullConfig.enableRegex) {
     const start = performance.now();
-    const regexResults = detectScriptures(text);
+    const activeContext = sessionContext ? {
+      book: sessionContext.getContext().currentBook,
+      chapter: sessionContext.getContext().currentChapter,
+    } : null;
+
+    // Only pass valid context (both book and chapter must be set)
+    const validContext = activeContext?.book && activeContext?.chapter
+      ? { book: activeContext.book, chapter: activeContext.chapter }
+      : null;
+
+    const regexResults = detectScriptures(text, validContext);
     timings['regex'] = performance.now() - start;
     stagesRun.push('regex');
 
