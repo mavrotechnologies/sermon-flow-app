@@ -35,6 +35,78 @@ let bibleVerses: VerseData[] = [];
 let popularVerseEmbeddings: Map<string, { data: VerseData; embedding: number[] }> = new Map();
 let popularVersesIndexed = false;
 
+// Worker state
+let embeddingWorker: Worker | null = null;
+let workerReady = false;
+let workerCallId = 0;
+const pendingCallbacks = new Map<string, { resolve: (v: number[]) => void; reject: (e: Error) => void }>();
+
+/**
+ * Initialize the embedding Web Worker
+ */
+function initWorker(): boolean {
+  if (embeddingWorker) return workerReady;
+  if (typeof window === 'undefined') return false;
+
+  try {
+    embeddingWorker = new Worker(
+      new URL('../workers/embedding.worker.ts', import.meta.url),
+      { type: 'module' }
+    );
+
+    embeddingWorker.onmessage = (event) => {
+      const { type, id, payload } = event.data;
+
+      if (type === 'ready') {
+        workerReady = true;
+        return;
+      }
+
+      if (id && pendingCallbacks.has(id)) {
+        const cb = pendingCallbacks.get(id)!;
+        pendingCallbacks.delete(id);
+
+        if (type === 'embedding' && payload?.embedding) {
+          cb.resolve(payload.embedding);
+        } else if (type === 'error') {
+          cb.reject(new Error(payload?.error || 'Worker error'));
+        }
+      }
+    };
+
+    embeddingWorker.onerror = () => {
+      // Worker failed to load — fall back to main thread
+      embeddingWorker = null;
+      workerReady = false;
+      // Reject all pending callbacks
+      for (const [, cb] of pendingCallbacks) {
+        cb.reject(new Error('Worker crashed'));
+      }
+      pendingCallbacks.clear();
+    };
+
+    return true;
+  } catch {
+    embeddingWorker = null;
+    return false;
+  }
+}
+
+/**
+ * Send an embed request to the worker and return a Promise for the result
+ */
+function workerEmbed(text: string): Promise<number[]> {
+  return new Promise((resolve, reject) => {
+    if (!embeddingWorker) {
+      reject(new Error('Worker not available'));
+      return;
+    }
+    const id = `e-${++workerCallId}`;
+    pendingCallbacks.set(id, { resolve, reject });
+    embeddingWorker.postMessage({ type: 'embed', id, payload: { text } });
+  });
+}
+
 // Confidence thresholds
 const HIGH_CONFIDENCE_THRESHOLD = 0.78;
 const MEDIUM_CONFIDENCE_THRESHOLD = 0.65;
@@ -56,6 +128,9 @@ export async function initializeSemanticSearch(
   isModelLoading = true;
   modelLoadPromise = (async () => {
     try {
+      // Try to start the Web Worker for off-main-thread inference
+      initWorker();
+
       onProgress?.('Loading AI model (22MB)...');
 
       // @ts-expect-error - transformers.js pipeline has complex union types
@@ -70,6 +145,11 @@ export async function initializeSemanticSearch(
           },
         }
       );
+
+      // Tell worker to initialize its model in parallel
+      if (embeddingWorker) {
+        embeddingWorker.postMessage({ type: 'init' });
+      }
 
       onProgress?.('Loading Bible data...');
 
@@ -171,9 +251,19 @@ function formatBookName(book: string): string {
 }
 
 /**
- * Generate embedding for text
+ * Generate embedding for text (delegates to worker when available)
  */
 async function embed(text: string): Promise<number[]> {
+  // Try worker first for off-main-thread inference
+  if (embeddingWorker && workerReady) {
+    try {
+      return await workerEmbed(text);
+    } catch {
+      // Worker failed — fall through to main-thread
+    }
+  }
+
+  // Main-thread fallback
   if (!extractor) {
     throw new Error('Model not initialized');
   }

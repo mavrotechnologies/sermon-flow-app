@@ -23,7 +23,8 @@ interface SearchResult {
 }
 
 interface WorkerMessage {
-  type: 'init' | 'search' | 'status';
+  type: 'init' | 'search' | 'status' | 'embed';
+  id?: string;
   payload?: {
     text?: string;
     topK?: number;
@@ -31,9 +32,11 @@ interface WorkerMessage {
 }
 
 interface WorkerResponse {
-  type: 'ready' | 'results' | 'error' | 'progress';
+  type: 'ready' | 'results' | 'error' | 'progress' | 'embedding';
+  id?: string;
   payload?: {
     results?: SearchResult[];
+    embedding?: number[];
     error?: string;
     progress?: string;
     modelLoaded?: boolean;
@@ -156,16 +159,34 @@ async function searchVerses(text: string, topK: number = 5): Promise<SearchResul
 
 // Message handler
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
-  const { type, payload } = event.data;
+  const { type, id, payload } = event.data;
 
   switch (type) {
     case 'init':
       await initialize();
       break;
 
+    case 'embed':
+      if (!payload?.text) {
+        postMessage({ type: 'error', id, payload: { error: 'No text provided' } } as WorkerResponse);
+        return;
+      }
+
+      try {
+        if (!isInitialized) {
+          await initialize();
+        }
+        const embedding = await generateEmbedding(payload.text);
+        postMessage({ type: 'embedding', id, payload: { embedding } } as WorkerResponse);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Embed failed';
+        postMessage({ type: 'error', id, payload: { error: errorMessage } } as WorkerResponse);
+      }
+      break;
+
     case 'search':
       if (!payload?.text) {
-        postMessage({ type: 'error', payload: { error: 'No search text provided' } } as WorkerResponse);
+        postMessage({ type: 'error', id, payload: { error: 'No search text provided' } } as WorkerResponse);
         return;
       }
 
@@ -176,21 +197,19 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
         }
 
         const results = await searchVerses(payload.text, payload.topK || 5);
-        postMessage({ type: 'results', payload: { results } } as WorkerResponse);
+        postMessage({ type: 'results', id, payload: { results } } as WorkerResponse);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Search failed';
-        postMessage({ type: 'error', payload: { error: errorMessage } } as WorkerResponse);
+        postMessage({ type: 'error', id, payload: { error: errorMessage } } as WorkerResponse);
       }
       break;
 
     case 'status':
       postMessage({
         type: 'ready',
+        id,
         payload: { modelLoaded: isInitialized },
       } as WorkerResponse);
       break;
   }
 };
-
-// Auto-initialize when worker starts
-initialize();

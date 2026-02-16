@@ -16,7 +16,7 @@ import { GPTScriptureList } from '@/components/GPTScriptureCard';
 import { generateRoomCode } from '@/lib/broadcast';
 import type { TranscriptSegment, ScriptureReference, DetectedScripture, BibleTranslation } from '@/types';
 import { TRANSLATIONS } from '@/types';
-import type { EnhancedDetection } from '@/hooks/useEnhancedScriptureDetection';
+import type { EnhancedDetection, ProcessSegmentResult } from '@/hooks/useEnhancedScriptureDetection';
 import type { StreamingScripture } from '@/hooks/useStreamingScriptureDetection';
 
 export default function AdminPage() {
@@ -212,16 +212,14 @@ export default function AdminPage() {
       await processFinal(segment.text);
 
       // Run enhanced pipeline (includes regex, cache, semantic, context)
-      await processEnhancedSegment(segment);
+      const pipelineResult = await processEnhancedSegment(segment);
 
       // Also run legacy regex detection for compatibility
       await processSegment(segment);
 
-      // Build context for GPT fallback
-      recentTextRef.current = (recentTextRef.current + ' ' + segment.text).slice(-600);
-
-      // GPT is now a fallback - only call if enhanced detection suggests it
-      if (recentTextRef.current.length > 30) {
+      // Only call GPT when the pipeline recommends it (ambiguous/paraphrase cases)
+      if (pipelineResult.shouldCallGPT) {
+        recentTextRef.current = (recentTextRef.current + ' ' + segment.text).slice(-600);
         detectWithGPT(recentTextRef.current, segment.isFinal);
       }
     },
@@ -253,16 +251,6 @@ export default function AdminPage() {
     _stopRecording();
     broadcastStatus(roomCode, { isRecording: false, isConnected: true });
   }, [_stopRecording, roomCode, broadcastStatus]);
-
-  // Also detect on interim text for real-time feel
-  const prevInterimRef = useRef<string>('');
-  useEffect(() => {
-    if (interimText && interimText.length > 30 && interimText !== prevInterimRef.current) {
-      prevInterimRef.current = interimText;
-      const fullContext = (recentTextRef.current + ' ' + interimText).slice(-600);
-      detectWithGPT(fullContext, false);
-    }
-  }, [interimText, detectWithGPT]);
 
   // Audio devices hook
   const {

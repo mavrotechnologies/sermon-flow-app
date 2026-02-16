@@ -43,6 +43,12 @@ export interface DetectionStats {
   semanticSearchReady: boolean;
 }
 
+export interface ProcessSegmentResult {
+  detections: EnhancedDetection[];
+  shouldCallGPT: boolean;
+  gptContext?: string;
+}
+
 interface UseEnhancedScriptureDetectionResult {
   // State
   detectedScriptures: EnhancedDetection[];
@@ -53,7 +59,7 @@ interface UseEnhancedScriptureDetectionResult {
   stats: DetectionStats;
 
   // Actions
-  processSegment: (segment: TranscriptSegment) => Promise<EnhancedDetection[]>;
+  processSegment: (segment: TranscriptSegment) => Promise<ProcessSegmentResult>;
   clearScriptures: () => void;
   initialize: () => Promise<void>;
 
@@ -206,8 +212,9 @@ export function useEnhancedScriptureDetection(
    * Process a transcript segment through the pipeline
    */
   const processSegment = useCallback(
-    async (segment: TranscriptSegment): Promise<EnhancedDetection[]> => {
-      if (!segment.text.trim()) return [];
+    async (segment: TranscriptSegment): Promise<ProcessSegmentResult> => {
+      const emptyResult: ProcessSegmentResult = { detections: [], shouldCallGPT: false };
+      if (!segment.text.trim()) return emptyResult;
 
       const startTime = performance.now();
       setIsProcessing(true);
@@ -229,14 +236,14 @@ export function useEnhancedScriptureDetection(
         // Only process if there's meaningful new content
         if (!hasNewContent && !segment.isFinal) {
           setIsProcessing(false);
-          return [];
+          return emptyResult;
         }
 
         // Quick check if worth running pipeline
         if (!mightContainScripture(fullWindow)) {
           bufferRef.current.markProcessed();
           setIsProcessing(false);
-          return [];
+          return emptyResult;
         }
 
         // Run the staged detection pipeline
@@ -334,12 +341,11 @@ export function useEnhancedScriptureDetection(
         // Mark buffer as processed
         bufferRef.current.markProcessed();
 
-        // Handle GPT fallback if needed
-        if (result.shouldCallGPT && pipelineConfig.enableGPT) {
-          // The GPT detection is handled by the existing useGPTScriptureDetection hook
-          // We just log that it should be called
-          console.log('GPT fallback recommended:', result.gptContext);
-        }
+        return {
+          detections: newScriptures,
+          shouldCallGPT: result.shouldCallGPT && pipelineConfig.enableGPT,
+          gptContext: result.gptContext,
+        };
       } catch (err) {
         console.error('Error processing segment:', err);
         setError('Error detecting scriptures');
@@ -347,7 +353,7 @@ export function useEnhancedScriptureDetection(
         setIsProcessing(false);
       }
 
-      return newScriptures;
+      return emptyResult;
     },
     [translation, pipelineConfig, onScriptureDetected]
   );
