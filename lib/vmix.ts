@@ -5,8 +5,23 @@ interface VmixResult {
   error?: string;
 }
 
+/** Strip protocol prefix and trailing port/slash from a host string */
+function cleanHost(raw: string): string {
+  let h = raw.trim();
+  h = h.replace(/^https?:\/\//, '');
+  h = h.replace(/\/.*$/, '');
+  // Remove port if user included it in the host field (port is a separate setting)
+  h = h.replace(/:\d+$/, '');
+  return h;
+}
+
 function baseUrl(settings: VmixSettings): string {
-  return `http://${settings.host}:${settings.port}/api/`;
+  return `http://${cleanHost(settings.host)}:${settings.port}/api/`;
+}
+
+/** Check if calling vMix will be blocked by mixed-content policy */
+export function isMixedContentBlocked(): boolean {
+  return typeof window !== 'undefined' && window.location.protocol === 'https:';
 }
 
 /**

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import type { VmixSettings } from '@/types';
+import { isMixedContentBlocked } from '@/lib/vmix';
 
 interface VmixSettingsModalProps {
   isOpen: boolean;
@@ -70,6 +71,24 @@ export function VmixSettingsModal({
             </div>
           </div>
 
+          {/* HTTPS mixed-content warning */}
+          {isMixedContentBlocked() && (
+            <div className="mb-4 p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
+              <div className="flex gap-2">
+                <svg className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <p className="text-yellow-400 text-xs font-medium">HTTPS blocks vMix connections</p>
+                  <p className="text-yellow-400/70 text-xs mt-1">
+                    This page is served over HTTPS but vMix uses HTTP. Browsers block this as mixed content.
+                    Open the admin page via <span className="font-mono">http://localhost:3000/admin</span> instead.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-4">
             {/* Enable Toggle */}
             <label className="flex items-center justify-between cursor-pointer">
@@ -98,6 +117,14 @@ export function VmixSettingsModal({
                 type="text"
                 value={draft.host}
                 onChange={(e) => setDraft((d) => ({ ...d, host: e.target.value }))}
+                onBlur={(e) => {
+                  // Strip protocol/port if user pasted a full URL
+                  let h = e.target.value.trim();
+                  h = h.replace(/^https?:\/\//, '');
+                  h = h.replace(/\/.*$/, '');
+                  h = h.replace(/:\d+$/, '');
+                  setDraft((d) => ({ ...d, host: h }));
+                }}
                 placeholder="192.168.1.100"
                 className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-gray-500 outline-none focus:border-blue-500/50 transition-colors"
               />
