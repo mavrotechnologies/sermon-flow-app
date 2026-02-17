@@ -42,18 +42,24 @@ export default function AdminPage() {
     broadcastStatus,
     broadcastClear,
     broadcastNotes,
+    broadcastSummary,
   } = useBroadcast();
 
   // Sermon notes hook
   const {
     notes: sermonNotes,
     isGenerating: isGeneratingNotes,
+    isGeneratingSummary,
     addTranscriptText: addNotesText,
     updateScriptures: updateNotesScriptures,
+    generateSummary,
     clear: clearSermonNotes,
   } = useSermonNotes({
     onNotesGenerated: (updatedNotes) => {
       broadcastNotes(roomCode, { notes: updatedNotes, isGenerating: false });
+    },
+    onSummaryGenerated: (summary) => {
+      broadcastSummary(roomCode, { summary, isGenerating: false });
     },
   });
 
@@ -250,7 +256,12 @@ export default function AdminPage() {
   const stopRecording = useCallback(() => {
     _stopRecording();
     broadcastStatus(roomCode, { isRecording: false, isConnected: true });
-  }, [_stopRecording, roomCode, broadcastStatus]);
+    // Generate final sermon summary if enough notes exist
+    if (sermonNotes.length >= 2) {
+      broadcastSummary(roomCode, { summary: null, isGenerating: true });
+      generateSummary();
+    }
+  }, [_stopRecording, roomCode, broadcastStatus, sermonNotes.length, broadcastSummary, generateSummary]);
 
   // Audio devices hook
   const {
@@ -404,6 +415,12 @@ export default function AdminPage() {
                   <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/20 rounded-full">
                     <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                     <span className="text-green-400 text-xs font-medium">Generating Notes...</span>
+                  </div>
+                )}
+                {isGeneratingSummary && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-full">
+                    <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+                    <span className="text-blue-400 text-xs font-medium">Generating Summary...</span>
                   </div>
                 )}
                 {pendingReference && (

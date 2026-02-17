@@ -35,6 +35,10 @@ COPY --from=builder /app/.next/static ./.next/static
 # Copy data files for Bible lookups
 COPY --from=builder /app/data ./data
 
+# Copy server wrapper and install ws for WebSocket proxy
+COPY --from=builder /app/server-wrapper.js ./server-wrapper.js
+RUN npm install ws
+
 USER nextjs
 
 EXPOSE 3000
@@ -42,4 +46,4 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "server.js"]
+CMD ["node", "server-wrapper.js"]

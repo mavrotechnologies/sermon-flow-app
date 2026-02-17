@@ -1,18 +1,23 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import type { SermonNote, DetectedScripture } from '@/types';
+import type { SermonNote, SermonSummary, DetectedScripture } from '@/types';
 
 const WORD_THRESHOLD = 200;
+const WORD_HARD_CAP = 250;
+const SENTENCE_ENDINGS = /[.?!]\s*$/;
 const TIME_THRESHOLD_MS = 60000; // 60 seconds
 
 interface UseSermonNotesOptions {
   onNotesGenerated?: (notes: SermonNote[]) => void;
+  onSummaryGenerated?: (summary: SermonSummary) => void;
 }
 
 export function useSermonNotes(options: UseSermonNotesOptions = {}) {
   const [notes, setNotes] = useState<SermonNote[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [summary, setSummary] = useState<SermonSummary | null>(null);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
 
   const bufferRef = useRef<string>('');
   const wordCountSinceLastRef = useRef<number>(0);
@@ -20,6 +25,7 @@ export function useSermonNotes(options: UseSermonNotesOptions = {}) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generatingRef = useRef<boolean>(false);
   const scripturesRef = useRef<DetectedScripture[]>([]);
+  const notesRef = useRef<SermonNote[]>([]);
 
   const generateNotes = useCallback(async () => {
     if (generatingRef.current) return;
@@ -34,7 +40,7 @@ export function useSermonNotes(options: UseSermonNotesOptions = {}) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           newText: bufferRef.current,
-          previousNotes: notes,
+          previousNotes: notesRef.current,
           detectedScriptures: scripturesRef.current,
         }),
       });
@@ -43,6 +49,7 @@ export function useSermonNotes(options: UseSermonNotesOptions = {}) {
       if (data.notes && data.notes.length > 0) {
         setNotes((prev) => {
           const updated = [...prev, ...data.notes];
+          notesRef.current = updated;
           options.onNotesGenerated?.(updated);
           return updated;
         });
@@ -58,7 +65,7 @@ export function useSermonNotes(options: UseSermonNotesOptions = {}) {
       generatingRef.current = false;
       setIsGenerating(false);
     }
-  }, [notes, options]);
+  }, [options]);
 
   const addTranscriptText = useCallback(
     (text: string) => {
@@ -66,13 +73,23 @@ export function useSermonNotes(options: UseSermonNotesOptions = {}) {
       const wordCount = text.trim().split(/\s+/).length;
       wordCountSinceLastRef.current += wordCount;
 
-      // Check word threshold
-      if (wordCountSinceLastRef.current >= WORD_THRESHOLD) {
+      // Hard cap: flush immediately regardless of sentence boundary
+      if (wordCountSinceLastRef.current >= WORD_HARD_CAP) {
         generateNotes();
-        // Reset backup timer
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = setTimeout(generateNotes, TIME_THRESHOLD_MS);
         return;
+      }
+
+      // Soft threshold: flush only if buffer ends on a sentence boundary
+      if (wordCountSinceLastRef.current >= WORD_THRESHOLD) {
+        if (SENTENCE_ENDINGS.test(bufferRef.current.trim())) {
+          generateNotes();
+          if (timerRef.current) clearTimeout(timerRef.current);
+          timerRef.current = setTimeout(generateNotes, TIME_THRESHOLD_MS);
+          return;
+        }
+        // Not at sentence boundary — keep buffering until hard cap or sentence end
       }
 
       // Set backup timer if not already set
@@ -88,6 +105,31 @@ export function useSermonNotes(options: UseSermonNotesOptions = {}) {
     [generateNotes]
   );
 
+  const generateSummary = useCallback(async () => {
+    const currentNotes = notesRef.current;
+    if (currentNotes.length < 2) return;
+
+    setIsGeneratingSummary(true);
+
+    try {
+      const res = await fetch('/api/generate-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: currentNotes }),
+      });
+
+      const data = await res.json();
+      if (data.summary) {
+        setSummary(data.summary);
+        options.onSummaryGenerated?.(data.summary);
+      }
+    } catch (error) {
+      console.error('Failed to generate summary:', error);
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  }, [options]);
+
   const updateScriptures = useCallback((scriptures: DetectedScripture[]) => {
     scripturesRef.current = scriptures;
   }, []);
@@ -95,11 +137,14 @@ export function useSermonNotes(options: UseSermonNotesOptions = {}) {
   const clear = useCallback(() => {
     setNotes([]);
     setIsGenerating(false);
+    setSummary(null);
+    setIsGeneratingSummary(false);
     bufferRef.current = '';
     wordCountSinceLastRef.current = 0;
     lastGenerationTimeRef.current = 0;
     generatingRef.current = false;
     scripturesRef.current = [];
+    notesRef.current = [];
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
@@ -109,8 +154,11 @@ export function useSermonNotes(options: UseSermonNotesOptions = {}) {
   return {
     notes,
     isGenerating,
+    summary,
+    isGeneratingSummary,
     addTranscriptText,
     updateScriptures,
+    generateSummary,
     clear,
   };
 }

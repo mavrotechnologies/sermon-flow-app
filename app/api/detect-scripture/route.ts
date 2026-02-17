@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         messages,
         temperature: 0.1, // Low temperature for consistent results
         max_tokens: 1000,

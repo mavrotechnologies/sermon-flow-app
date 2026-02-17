@@ -49,52 +49,56 @@ export class DeepgramService {
     if (this.isRunning) return;
 
     try {
-      // Get Deepgram connection config from our API
-      const response = await fetch('/api/deepgram');
-      if (!response.ok) {
-        const data = await response.json();
-        if (data.error?.includes('not configured')) {
-          // Fall back to browser speech recognition
-          throw new Error('Deepgram not configured - using browser speech recognition');
-        }
-        throw new Error('Failed to get Deepgram config');
-      }
-
-      const { wsUrl, apiKey } = await response.json();
-
-      // Get microphone access
+      // Get microphone access first
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
-          sampleRate: 16000,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         },
       });
 
-      // Set up audio processing with noise reduction
-      this.audioContext = new AudioContext({ sampleRate: 16000 });
+      // Use native sample rate then resample — forcing 16000 can throw on some browsers
+      this.audioContext = new AudioContext();
+      const nativeSampleRate = this.audioContext.sampleRate;
+      console.log(`AudioContext sample rate: ${nativeSampleRate}`);
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
 
       // Create audio processing chain for better quality
       const audioProcessor = await this.createAudioProcessor(source);
 
-      // Connect to Deepgram WebSocket
-      this.ws = new WebSocket(wsUrl, ['token', apiKey]);
+      // Connect to our server-side WebSocket proxy (handles Deepgram auth server-side)
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const proxyUrl = `${protocol}//${window.location.host}/api/deepgram-ws`;
+      console.log(`[Deepgram] Connecting to proxy: ${proxyUrl}`);
+      this.ws = new WebSocket(proxyUrl);
+      this.ws.binaryType = 'arraybuffer';
 
       this.ws.onopen = () => {
-        this.isRunning = true;
-        this.reconnectAttempts = 0;
-        this.config.onStart();
-
-        // Start sending audio
-        audioProcessor.connect(this.audioContext!.destination);
+        console.log('[Deepgram] Proxy WebSocket open, waiting for Deepgram connection...');
       };
 
       this.ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+
+          // Proxy signals that Deepgram connection is ready
+          if (data.type === 'proxy_connected') {
+            console.log('[Deepgram] Proxy connected to Deepgram, starting audio');
+            this.isRunning = true;
+            this.reconnectAttempts = 0;
+            this.config.onStart();
+            audioProcessor.connect(this.audioContext!.destination);
+            return;
+          }
+
+          // Proxy forwarded an error from server
+          if (data.error) {
+            console.error('[Deepgram] Proxy error:', data.error);
+            this.config.onError(data.error);
+            return;
+          }
 
           if (data.type === 'Results') {
             const result = data as DeepgramResult;
@@ -112,18 +116,23 @@ export class DeepgramService {
       };
 
       this.ws.onerror = (error) => {
-        console.error('Deepgram WebSocket error:', error);
-        this.config.onError('Connection error - check your internet');
+        console.error('[Deepgram] Proxy WebSocket error:', error);
       };
 
       this.ws.onclose = (event) => {
         this.isRunning = false;
+        console.log(`[Deepgram] Proxy WebSocket closed: code=${event.code} reason="${event.reason}"`);
 
         if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
-          // Abnormal close, try to reconnect
           this.reconnectAttempts++;
-          console.log(`Deepgram connection lost, reconnecting (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+          const attempt = this.reconnectAttempts;
+          console.log(`[Deepgram] Reconnecting (${attempt}/${this.maxReconnectAttempts})...`);
+          this.cleanup();
           setTimeout(() => this.start(), 1000);
+          return;
+        } else if (event.code !== 1000) {
+          this.config.onError('Connection error - check your internet');
+          this.cleanup();
         } else {
           this.cleanup();
           this.config.onEnd();
@@ -180,12 +189,26 @@ export class DeepgramService {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
       const inputData = event.inputBuffer.getChannelData(0);
+      const nativeSR = this.audioContext!.sampleRate;
+      const targetSR = 16000;
+
+      // Downsample from native rate to 16kHz if needed
+      let samples: Float32Array;
+      if (nativeSR !== targetSR) {
+        const ratio = nativeSR / targetSR;
+        const newLength = Math.floor(inputData.length / ratio);
+        samples = new Float32Array(newLength);
+        for (let i = 0; i < newLength; i++) {
+          samples[i] = inputData[Math.floor(i * ratio)];
+        }
+      } else {
+        samples = inputData;
+      }
 
       // Convert Float32Array to Int16Array (linear16 PCM)
-      const pcmData = new Int16Array(inputData.length);
-      for (let i = 0; i < inputData.length; i++) {
-        // Clamp and convert to 16-bit PCM
-        const s = Math.max(-1, Math.min(1, inputData[i]));
+      const pcmData = new Int16Array(samples.length);
+      for (let i = 0; i < samples.length; i++) {
+        const s = Math.max(-1, Math.min(1, samples[i]));
         pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
       }
 

@@ -54,10 +54,28 @@ export interface SermonNotesPayload {
   isGenerating: boolean;
 }
 
+// Sermon Summary Types
+export interface SermonSummary {
+  id: string;
+  title: string;
+  overview: string;
+  mainThemes: string[];
+  keyPoints: { point: string; scripture?: string }[];
+  keyQuotes: string[];
+  scripturesSummary: string[];
+  closingThought: string;
+  generatedAt: number;
+}
+
+export interface SermonSummaryPayload {
+  summary: SermonSummary | null;
+  isGenerating: boolean;
+}
+
 // Broadcast Types
 export interface BroadcastMessage {
-  type: 'transcript' | 'scripture' | 'status' | 'clear' | 'notes';
-  payload: TranscriptSegment | DetectedScripture | StatusPayload | SermonNotesPayload | null;
+  type: 'transcript' | 'scripture' | 'status' | 'clear' | 'notes' | 'summary';
+  payload: TranscriptSegment | DetectedScripture | StatusPayload | SermonNotesPayload | SermonSummaryPayload | null;
   timestamp: number;
 }
 

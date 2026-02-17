@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * Keeps API key on server for security
  */
 
-// All 66 Bible book names + common variations for keyword boosting
+// Bible book names + theological terms for keyword boosting
 const BIBLE_KEYWORDS = [
   // Old Testament
   'Genesis', 'Exodus', 'Leviticus', 'Numbers', 'Deuteronomy',
@@ -40,43 +40,48 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Build Deepgram WebSocket URL with optimal settings for sermon transcription
-  const params = new URLSearchParams({
-    // Model selection - Nova-2 is best for accents
-    model: 'nova-2',
-    language: 'en',
+  // Build Deepgram WebSocket URL with optimal settings
+  const params = new URLSearchParams();
 
-    // Enable smart features
-    smart_format: 'true',
-    punctuate: 'true',
-    paragraphs: 'true',
+  // Model
+  params.set('model', 'nova-2');
+  params.set('language', 'en');
 
-    // Interim results for real-time feel
-    interim_results: 'true',
+  // Smart features
+  params.set('smart_format', 'true');
+  params.set('punctuate', 'true');
+  params.set('paragraphs', 'true');
 
-    // Utterance detection for natural sentence breaks
-    utterance_end_ms: '1000',
+  // Interim results for real-time feel
+  params.set('interim_results', 'true');
 
-    // Voice activity detection
-    vad_events: 'true',
+  // Utterance detection for natural sentence breaks
+  params.set('utterance_end_ms', '1000');
 
-    // Endpointing for faster results
-    endpointing: '300',
+  // Voice activity detection
+  params.set('vad_events', 'true');
 
-    // Keywords boost (critical for Bible book recognition)
-    keywords: BIBLE_KEYWORDS.map(k => `${k}:2`).join(','),
+  // Endpointing for faster results
+  params.set('endpointing', '300');
 
-    // Encoding settings
-    encoding: 'linear16',
-    sample_rate: '16000',
-    channels: '1',
-  });
+  // Encoding settings
+  params.set('encoding', 'linear16');
+  params.set('sample_rate', '16000');
+  params.set('channels', '1');
+
+  // Only boost the most critical Bible book names to keep URL short.
+  // Full keyword list made the URL ~2300 chars which Deepgram rejects.
+  const TOP_KEYWORDS = [
+    'Genesis', 'Exodus', 'Psalms', 'Proverbs', 'Isaiah',
+    'Matthew', 'Mark', 'Luke', 'John', 'Acts', 'Romans',
+    'Corinthians', 'Galatians', 'Ephesians', 'Hebrews',
+    'Revelation', 'Jesus', 'Christ', 'scripture',
+  ];
+  for (const keyword of TOP_KEYWORDS) {
+    params.append('keywords', `${keyword}:2`);
+  }
 
   const wsUrl = `wss://api.deepgram.com/v1/listen?${params.toString()}`;
 
-  return NextResponse.json({
-    wsUrl,
-    apiKey, // Client needs this for WebSocket auth header
-    keywords: BIBLE_KEYWORDS,
-  });
+  return NextResponse.json({ wsUrl, apiKey });
 }

@@ -1,4 +1,4 @@
-import type {BroadcastMessage, DetectedScripture, SermonNotesPayload, StatusPayload, TranscriptSegment} from '@/types';
+import type {BroadcastMessage, DetectedScripture, SermonNotesPayload, SermonSummaryPayload, StatusPayload, TranscriptSegment} from '@/types';
 
 /**
  * Room-aware Broadcast manager for Server-Sent Events (SSE)
@@ -170,6 +170,17 @@ class BroadcastManager {
     }
 
     /**
+     * Broadcast sermon summary to a room
+     */
+    broadcastSummary(roomId: string, payload: SermonSummaryPayload): void {
+        this.broadcast(roomId, {
+            type: 'summary',
+            payload,
+            timestamp: Date.now(),
+        });
+    }
+
+    /**
      * Get number of connected clients in a room
      */
     getClientCount(roomId: string): number {
@@ -208,6 +219,7 @@ export class SSEClient {
             onStatus?: (status: StatusPayload) => void;
             onClear?: () => void;
             onNotes?: (payload: SermonNotesPayload) => void;
+            onSummary?: (payload: SermonSummaryPayload) => void;
             onConnect?: () => void;
             onDisconnect?: () => void;
             onError?: (error: string) => void;
@@ -264,6 +276,13 @@ export class SSEClient {
                 const message: BroadcastMessage = JSON.parse(event.data);
                 if (message.payload) {
                     this.callbacks.onNotes?.(message.payload as SermonNotesPayload);
+                }
+            });
+
+            this.eventSource.addEventListener('summary', (event) => {
+                const message: BroadcastMessage = JSON.parse(event.data);
+                if (message.payload) {
+                    this.callbacks.onSummary?.(message.payload as SermonSummaryPayload);
                 }
             });
         } catch (error) {

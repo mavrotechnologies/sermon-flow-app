@@ -5,7 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { SSEClient } from '@/lib/broadcast';
 import { SermonNotesDisplay } from '@/components/SermonNotesDisplay';
-import type { TranscriptSegment, DetectedScripture, SermonNote, SermonNotesPayload } from '@/types';
+import { SermonSummaryDisplay } from '@/components/SermonSummaryDisplay';
+import type { TranscriptSegment, DetectedScripture, SermonNote, SermonSummary, SermonNotesPayload, SermonSummaryPayload } from '@/types';
 
 function LivePageContent() {
   const searchParams = useSearchParams();
@@ -17,6 +18,8 @@ function LivePageContent() {
   const [scriptures, setScriptures] = useState<DetectedScripture[]>([]);
   const [notes, setNotes] = useState<SermonNote[]>([]);
   const [isGeneratingNotes, setIsGeneratingNotes] = useState(false);
+  const [summary, setSummary] = useState<SermonSummary | null>(null);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<'scriptures' | 'notes'>('scriptures');
@@ -63,10 +66,18 @@ function LivePageContent() {
         setScriptures([]);
         setNotes([]);
         setIsGeneratingNotes(false);
+        setSummary(null);
+        setIsGeneratingSummary(false);
       },
       onNotes: (payload: SermonNotesPayload) => {
         setNotes(payload.notes);
         setIsGeneratingNotes(payload.isGenerating);
+      },
+      onSummary: (payload: SermonSummaryPayload) => {
+        setSummary(payload.summary);
+        setIsGeneratingSummary(payload.isGenerating);
+        // Auto-switch to notes tab when summary arrives
+        setActiveTab('notes');
       },
       onError: (err) => {
         setError(err);
@@ -355,7 +366,10 @@ function LivePageContent() {
                           </div>
                         )
                       ) : (
-                        <SermonNotesDisplay notes={notes} isGenerating={isGeneratingNotes} />
+                        <div>
+                          <SermonSummaryDisplay summary={summary} isGenerating={isGeneratingSummary} />
+                          <SermonNotesDisplay notes={notes} isGenerating={isGeneratingNotes} />
+                        </div>
                       )}
                     </div>
                   </div>

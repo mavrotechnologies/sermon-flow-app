@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useEffect } from 'react';
-import type { TranscriptSegment, DetectedScripture, SermonNotesPayload } from '@/types';
+import type { TranscriptSegment, DetectedScripture, SermonNotesPayload, SermonSummaryPayload } from '@/types';
 
 interface QueuedMessage {
   type: string;
@@ -141,11 +141,19 @@ export function useBroadcast() {
     [post]
   );
 
+  const broadcastSummary = useCallback(
+    (roomId: string, summaryPayload: SermonSummaryPayload) => {
+      post('summary', summaryPayload, roomId);
+    },
+    [post]
+  );
+
   return {
     broadcastTranscript,
     broadcastScripture,
     broadcastStatus,
     broadcastClear,
     broadcastNotes,
+    broadcastSummary,
   };
 }

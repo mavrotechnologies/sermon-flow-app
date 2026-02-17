@@ -78,6 +78,7 @@ export class SpeechRecognitionService {
   private restartAttempts = 0;
   private readonly maxRestartAttempts = 10;
   private isRestarting = false;
+  private lastInterimTranscript = '';
 
   constructor(
     config: SpeechRecognitionConfig = {},
@@ -130,6 +131,14 @@ export class SpeechRecognitionService {
         return;
       }
 
+      // Flush any pending interim text as final before restarting/stopping.
+      // Chrome kills interim results on session end without finalizing them.
+      if (this.lastInterimTranscript.trim()) {
+        console.log('[SpeechRecognition] Flushing unfinalised interim text as final');
+        this.callbacks.onResult?.(this.lastInterimTranscript, true);
+        this.lastInterimTranscript = '';
+      }
+
       // Auto-restart if needed (Web Speech API stops on silence)
       if (this.shouldRestart) {
         console.log('[SpeechRecognition] Recognition ended, auto-restarting...');
@@ -165,11 +174,13 @@ export class SpeechRecognitionService {
 
     // Report final transcript
     if (finalTranscript) {
+      this.lastInterimTranscript = '';
       this.callbacks.onResult?.(finalTranscript, true);
     }
 
     // Report interim transcript
     if (interimTranscript) {
+      this.lastInterimTranscript = interimTranscript;
       this.callbacks.onResult?.(interimTranscript, false);
     }
   }
@@ -276,6 +287,7 @@ export class SpeechRecognitionService {
    */
   stop(): void {
     this.shouldRestart = false;
+    this.lastInterimTranscript = '';
 
     if (this.restartTimeout) {
       clearTimeout(this.restartTimeout);
