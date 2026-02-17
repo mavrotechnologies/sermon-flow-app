@@ -68,22 +68,50 @@ export class DeepgramService {
       // Create audio processing chain for better quality
       const audioProcessor = await this.createAudioProcessor(source);
 
-      // Connect to our server-side WebSocket proxy (handles Deepgram auth server-side)
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const proxyUrl = `${protocol}//${window.location.host}/api/deepgram-ws`;
-      console.log(`[Deepgram] Connecting to proxy: ${proxyUrl}`);
-      this.ws = new WebSocket(proxyUrl);
+      // Detect environment: use proxy on Docker/localhost, direct on Vercel/production
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+      if (isLocal) {
+        // Docker: use server-side WebSocket proxy (handles auth via Authorization header)
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const proxyUrl = `${protocol}//${window.location.host}/api/deepgram-ws`;
+        console.log(`[Deepgram] Connecting via proxy: ${proxyUrl}`);
+        this.ws = new WebSocket(proxyUrl);
+      } else {
+        // Vercel/production: connect directly to Deepgram with subprotocol auth
+        const response = await fetch('/api/deepgram');
+        if (!response.ok) {
+          const data = await response.json();
+          if (data.error?.includes('not configured')) {
+            throw new Error('Deepgram not configured - using browser speech recognition');
+          }
+          throw new Error('Failed to get Deepgram config');
+        }
+        const { wsUrl, apiKey } = await response.json();
+        console.log(`[Deepgram] Connecting directly: ${wsUrl.substring(0, 60)}...`);
+        this.ws = new WebSocket(wsUrl, ['token', apiKey]);
+      }
+
       this.ws.binaryType = 'arraybuffer';
 
       this.ws.onopen = () => {
-        console.log('[Deepgram] Proxy WebSocket open, waiting for Deepgram connection...');
+        if (isLocal) {
+          console.log('[Deepgram] Proxy WebSocket open, waiting for Deepgram connection...');
+        } else {
+          // Direct connection — ready immediately
+          console.log('[Deepgram] Connected directly to Deepgram');
+          this.isRunning = true;
+          this.reconnectAttempts = 0;
+          this.config.onStart();
+          audioProcessor.connect(this.audioContext!.destination);
+        }
       };
 
       this.ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
 
-          // Proxy signals that Deepgram connection is ready
+          // Proxy signals that Deepgram connection is ready (local only)
           if (data.type === 'proxy_connected') {
             console.log('[Deepgram] Proxy connected to Deepgram, starting audio');
             this.isRunning = true;
@@ -105,7 +133,6 @@ export class DeepgramService {
             const transcript = result.channel.alternatives[0]?.transcript;
 
             if (transcript) {
-              // Deepgram uses speech_final for utterance end, is_final for chunk
               const isFinal = result.speech_final || result.is_final;
               this.config.onTranscript(transcript, isFinal);
             }
@@ -116,12 +143,12 @@ export class DeepgramService {
       };
 
       this.ws.onerror = (error) => {
-        console.error('[Deepgram] Proxy WebSocket error:', error);
+        console.error('[Deepgram] WebSocket error:', error);
       };
 
       this.ws.onclose = (event) => {
         this.isRunning = false;
-        console.log(`[Deepgram] Proxy WebSocket closed: code=${event.code} reason="${event.reason}"`);
+        console.log(`[Deepgram] WebSocket closed: code=${event.code} reason="${event.reason}"`);
 
         if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
