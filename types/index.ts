@@ -140,3 +140,20 @@ export interface BookNameMap {
   name: string;
   abbrev: string[];
 }
+
+// vMix Integration Types
+export interface VmixSettings {
+  enabled: boolean;
+  host: string;        // e.g. "192.168.1.100"
+  port: number;        // default 8088
+  titleInput: string;  // vMix input number/name for the title graphic
+  referenceField: string;  // field name for scripture reference (default "Headline.Text")
+  verseTextField: string;  // field name for verse text (default "Description.Text")
+}
+
+export interface VmixOverlayState {
+  isShowing: boolean;
+  currentReference: string | null;
+  currentText: string | null;
+  showingSince: number | null;
+}

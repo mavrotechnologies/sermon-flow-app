@@ -5,12 +5,13 @@ import type { GPTDetectedScripture } from '@/hooks/useGPTScriptureDetection';
 interface GPTScriptureCardProps {
   scripture: GPTDetectedScripture;
   onSelect?: (scripture: GPTDetectedScripture) => void;
+  renderActions?: (scripture: GPTDetectedScripture) => React.ReactNode;
 }
 
 /**
  * Display card for a GPT-detected Bible scripture
  */
-export function GPTScriptureCard({ scripture, onSelect }: GPTScriptureCardProps) {
+export function GPTScriptureCard({ scripture, onSelect, renderActions }: GPTScriptureCardProps) {
   const reference = scripture.verseEnd
     ? `${scripture.book} ${scripture.chapter}:${scripture.verse}-${scripture.verseEnd}`
     : `${scripture.book} ${scripture.chapter}:${scripture.verse}`;
@@ -57,9 +58,12 @@ export function GPTScriptureCard({ scripture, onSelect }: GPTScriptureCardProps)
             </h4>
           </div>
         </div>
-        <span className={`px-3 py-1 rounded-full text-xs font-medium border ${config.badgeColor}`}>
-          {config.label}
-        </span>
+        <div className="flex items-center gap-2">
+          {renderActions?.(scripture)}
+          <span className={`px-3 py-1 rounded-full text-xs font-medium border ${config.badgeColor}`}>
+            {config.label}
+          </span>
+        </div>
       </div>
 
       {/* Reason/explanation */}
@@ -84,6 +88,7 @@ interface GPTScriptureListProps {
   isDetecting?: boolean;
   error?: string | null;
   onSelect?: (scripture: GPTDetectedScripture) => void;
+  renderActions?: (scripture: GPTDetectedScripture) => React.ReactNode;
 }
 
 /**
@@ -94,6 +99,7 @@ export function GPTScriptureList({
   isDetecting,
   error,
   onSelect,
+  renderActions,
 }: GPTScriptureListProps) {
   if (error) {
     return (
@@ -158,6 +164,7 @@ export function GPTScriptureList({
           key={scripture.id}
           scripture={scripture}
           onSelect={onSelect}
+          renderActions={renderActions}
         />
       ))}
     </div>

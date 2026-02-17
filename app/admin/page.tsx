@@ -13,6 +13,8 @@ import { useSermonNotes } from '@/hooks/useSermonNotes';
 import { QRCodeModal } from '@/components/QRCode';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { GPTScriptureList } from '@/components/GPTScriptureCard';
+import { VmixSettingsModal } from '@/components/VmixSettingsModal';
+import { useVmixSettings } from '@/hooks/useVmixSettings';
 import { generateRoomCode } from '@/lib/broadcast';
 import type { TranscriptSegment, ScriptureReference, DetectedScripture, BibleTranslation } from '@/types';
 import { TRANSLATIONS } from '@/types';
@@ -30,10 +32,24 @@ export default function AdminPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [roomCode] = useState(() => generateRoomCode());
   const [roomCodeCopied, setRoomCodeCopied] = useState(false);
+  const [showVmixSettings, setShowVmixSettings] = useState(false);
+  const [presentedId, setPresentedId] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // vMix integration hook
+  const {
+    settings: vmixSettings,
+    overlayState: vmixOverlayState,
+    updateSettings: updateVmixSettings,
+    presentScripture: vmixPresentScripture,
+    hideOverlay: vmixHideOverlay,
+    testConnection: vmixTestConnection,
+    isConnected: vmixIsConnected,
+    isTesting: vmixIsTesting,
+  } = useVmixSettings();
 
   // Broadcast hook for admin→live communication
   const {
@@ -288,7 +304,8 @@ export default function AdminPage() {
     prevEnhancedBroadcastedRef.current = 0;
     prevStreamingBroadcastedRef.current = 0;
     broadcastClear(roomCode);
-  }, [clearTranscript, clearScriptures, clearGPTScriptures, clearEnhancedScriptures, clearStreamingScriptures, clearSermonNotes, roomCode, broadcastClear]);
+    vmixHideOverlay();
+  }, [clearTranscript, clearScriptures, clearGPTScriptures, clearEnhancedScriptures, clearStreamingScriptures, clearSermonNotes, roomCode, broadcastClear, vmixHideOverlay]);
 
   // Handle scripture click from transcript
   const handleScriptureClick = useCallback((ref: ScriptureReference) => {
@@ -429,10 +446,43 @@ export default function AdminPage() {
                     <span className="text-green-400 text-xs font-medium">{pendingReference}</span>
                   </div>
                 )}
+                {vmixOverlayState.isShowing && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-orange-500/10 border border-orange-500/20 rounded-full">
+                    <span className="w-2 h-2 bg-orange-400 rounded-full animate-pulse" />
+                    <span className="text-orange-400 text-xs font-medium truncate max-w-[200px]">
+                      On Screen: {vmixOverlayState.currentReference}
+                    </span>
+                    <button
+                      onClick={() => vmixHideOverlay()}
+                      className="text-orange-300 hover:text-white transition-colors"
+                      title="Hide overlay"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="flex items-center gap-2 md:gap-3 shrink-0">
+              {/* vMix Settings Button */}
+              <button
+                onClick={() => setShowVmixSettings(true)}
+                className={`p-2 md:p-2.5 glass border rounded-xl transition-all ${
+                  vmixSettings.enabled && vmixSettings.host
+                    ? 'border-blue-500/20 hover:border-blue-500/40 hover:bg-blue-500/10'
+                    : 'border-white/10 hover:border-white/20 hover:bg-white/10'
+                }`}
+                title="vMix Settings"
+              >
+                <svg className={`w-4 h-4 ${vmixSettings.enabled && vmixSettings.host ? 'text-blue-400' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+
               {/* Share Button - Secondary */}
               <button
                 onClick={() => setShowQRModal(true)}
@@ -811,6 +861,41 @@ export default function AdminPage() {
                         );
                         setActiveTab('verses');
                       }}
+                      renderActions={vmixSettings.enabled && vmixSettings.host ? (scripture) => {
+                        const ref = scripture.verseEnd
+                          ? `${scripture.book} ${scripture.chapter}:${scripture.verse}-${scripture.verseEnd}`
+                          : `${scripture.book} ${scripture.chapter}:${scripture.verse}`;
+                        const verseText = scripture.text || scripture.reason;
+                        return (
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const ok = await vmixPresentScripture(ref, verseText);
+                              if (ok) {
+                                setPresentedId(scripture.id);
+                                setTimeout(() => setPresentedId(null), 2000);
+                              }
+                            }}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                              presentedId === scripture.id
+                                ? 'bg-green-500/20 text-green-400'
+                                : 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'
+                            }`}
+                            title="Present on vMix"
+                          >
+                            {presentedId === scripture.id ? (
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            ) : (
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                            )}
+                            {presentedId === scripture.id ? 'Sent' : 'Present'}
+                          </button>
+                        );
+                      } : undefined}
                     />
                   </div>
                 ) : detectedScriptures.length === 0 ? (
@@ -875,34 +960,71 @@ export default function AdminPage() {
                           ))}
                           <div className="mt-3 flex items-center justify-between">
                             <span className="text-xs text-gray-500">{scripture.verses[0]?.translation || translation} Translation</span>
-                            <button
-                              onClick={() => {
-                                const ref = `${scripture.book} ${scripture.chapter}:${scripture.verseStart}${scripture.verseEnd && scripture.verseEnd !== scripture.verseStart ? `-${scripture.verseEnd}` : ''}`;
-                                const verseText = scripture.verses.map(v => v.text).join(' ');
-                                const copyText = `${ref} (${scripture.verses[0]?.translation || translation})\n${verseText}`;
-                                navigator.clipboard.writeText(copyText);
-                                setCopiedId(scripture.id);
-                                setTimeout(() => setCopiedId(null), 2000);
-                              }}
-                              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-white/10 active:bg-white/20 transition-all text-xs text-gray-400 hover:text-gray-200"
-                              title="Copy verse"
-                            >
-                              {copiedId === scripture.id ? (
-                                <>
-                                  <svg className="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                  </svg>
-                                  <span className="text-green-400">Copied</span>
-                                </>
-                              ) : (
-                                <>
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                  </svg>
-                                  Copy
-                                </>
+                            <div className="flex items-center gap-2">
+                              {vmixSettings.enabled && vmixSettings.host && (
+                                <button
+                                  onClick={async () => {
+                                    const ref = `${scripture.book} ${scripture.chapter}:${scripture.verseStart}${scripture.verseEnd && scripture.verseEnd !== scripture.verseStart ? `-${scripture.verseEnd}` : ''}`;
+                                    const verseText = scripture.verses.map(v => v.text).join(' ');
+                                    const ok = await vmixPresentScripture(ref, verseText);
+                                    if (ok) {
+                                      setPresentedId(scripture.id);
+                                      setTimeout(() => setPresentedId(null), 2000);
+                                    }
+                                  }}
+                                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all text-xs font-medium ${
+                                    presentedId === scripture.id
+                                      ? 'bg-green-500/20 text-green-400'
+                                      : 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'
+                                  }`}
+                                  title="Present on vMix"
+                                >
+                                  {presentedId === scripture.id ? (
+                                    <>
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                      Sent
+                                    </>
+                                  ) : (
+                                    <>
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                      </svg>
+                                      Present
+                                    </>
+                                  )}
+                                </button>
                               )}
-                            </button>
+                              <button
+                                onClick={() => {
+                                  const ref = `${scripture.book} ${scripture.chapter}:${scripture.verseStart}${scripture.verseEnd && scripture.verseEnd !== scripture.verseStart ? `-${scripture.verseEnd}` : ''}`;
+                                  const verseText = scripture.verses.map(v => v.text).join(' ');
+                                  const copyText = `${ref} (${scripture.verses[0]?.translation || translation})\n${verseText}`;
+                                  navigator.clipboard.writeText(copyText);
+                                  setCopiedId(scripture.id);
+                                  setTimeout(() => setCopiedId(null), 2000);
+                                }}
+                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-white/10 active:bg-white/20 transition-all text-xs text-gray-400 hover:text-gray-200"
+                                title="Copy verse"
+                              >
+                                {copiedId === scripture.id ? (
+                                  <>
+                                    <svg className="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                    <span className="text-green-400">Copied</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                    </svg>
+                                    Copy
+                                  </>
+                                )}
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -935,6 +1057,17 @@ export default function AdminPage() {
         message="This will clear the transcript, all detected scriptures, and sermon notes. This action cannot be undone. Connected live viewers will also be cleared."
         confirmLabel="Clear All"
         confirmVariant="danger"
+      />
+
+      {/* vMix Settings Modal */}
+      <VmixSettingsModal
+        isOpen={showVmixSettings}
+        onClose={() => setShowVmixSettings(false)}
+        settings={vmixSettings}
+        onSave={updateVmixSettings}
+        onTestConnection={vmixTestConnection}
+        isTesting={vmixIsTesting}
+        isConnected={vmixIsConnected}
       />
     </div>
   );
