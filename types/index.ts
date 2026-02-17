@@ -73,9 +73,15 @@ export interface SermonSummaryPayload {
 }
 
 // Broadcast Types
+export interface VmixCommandPayload {
+  action: 'present' | 'hide';
+  reference?: string;
+  verseText?: string;
+}
+
 export interface BroadcastMessage {
-  type: 'transcript' | 'scripture' | 'status' | 'clear' | 'notes' | 'summary';
-  payload: TranscriptSegment | DetectedScripture | StatusPayload | SermonNotesPayload | SermonSummaryPayload | null;
+  type: 'transcript' | 'scripture' | 'status' | 'clear' | 'notes' | 'summary' | 'vmix';
+  payload: TranscriptSegment | DetectedScripture | StatusPayload | SermonNotesPayload | SermonSummaryPayload | VmixCommandPayload | null;
   timestamp: number;
 }
 

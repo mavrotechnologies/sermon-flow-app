@@ -86,6 +86,9 @@ export async function POST(request: NextRequest) {
       case 'summary':
         broadcastManager.broadcastSummary(room, payload);
         break;
+      case 'vmix':
+        broadcastManager.broadcastVmix(room, payload);
+        break;
       default:
         return Response.json({ error: 'Invalid message type' }, { status: 400 });
     }

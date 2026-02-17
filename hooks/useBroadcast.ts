@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useEffect } from 'react';
-import type { TranscriptSegment, DetectedScripture, SermonNotesPayload, SermonSummaryPayload } from '@/types';
+import type { TranscriptSegment, DetectedScripture, SermonNotesPayload, SermonSummaryPayload, VmixCommandPayload } from '@/types';
 
 interface QueuedMessage {
   type: string;
@@ -148,6 +148,13 @@ export function useBroadcast() {
     [post]
   );
 
+  const broadcastVmix = useCallback(
+    (roomId: string, vmixPayload: VmixCommandPayload) => {
+      post('vmix', vmixPayload, roomId);
+    },
+    [post]
+  );
+
   return {
     broadcastTranscript,
     broadcastScripture,
@@ -155,5 +162,6 @@ export function useBroadcast() {
     broadcastClear,
     broadcastNotes,
     broadcastSummary,
+    broadcastVmix,
   };
 }

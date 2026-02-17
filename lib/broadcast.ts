@@ -1,4 +1,4 @@
-import type {BroadcastMessage, DetectedScripture, SermonNotesPayload, SermonSummaryPayload, StatusPayload, TranscriptSegment} from '@/types';
+import type {BroadcastMessage, DetectedScripture, SermonNotesPayload, SermonSummaryPayload, StatusPayload, TranscriptSegment, VmixCommandPayload} from '@/types';
 
 /**
  * Room-aware Broadcast manager for Server-Sent Events (SSE)
@@ -175,6 +175,17 @@ class BroadcastManager {
     broadcastSummary(roomId: string, payload: SermonSummaryPayload): void {
         this.broadcast(roomId, {
             type: 'summary',
+            payload,
+            timestamp: Date.now(),
+        });
+    }
+
+    /**
+     * Broadcast vMix command to a room (picked up by bridge script)
+     */
+    broadcastVmix(roomId: string, payload: VmixCommandPayload): void {
+        this.broadcast(roomId, {
+            type: 'vmix',
             payload,
             timestamp: Date.now(),
         });

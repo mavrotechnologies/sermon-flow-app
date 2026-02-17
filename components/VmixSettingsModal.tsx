@@ -12,6 +12,7 @@ interface VmixSettingsModalProps {
   onTestConnection: () => Promise<{ success: boolean; error?: string }>;
   isTesting: boolean;
   isConnected: boolean;
+  roomCode: string;
 }
 
 export function VmixSettingsModal({
@@ -22,9 +23,11 @@ export function VmixSettingsModal({
   onTestConnection,
   isTesting,
   isConnected,
+  roomCode,
 }: VmixSettingsModalProps) {
   const [draft, setDraft] = useState(settings);
   const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null);
+  const bridgeMode = isMixedContentBlocked();
 
   // Sync draft when modal opens
   useEffect(() => {
@@ -36,8 +39,9 @@ export function VmixSettingsModal({
 
   if (!isOpen) return null;
 
+  const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
+
   const handleTest = async () => {
-    // Save draft first so testConnection uses current values
     onSave(draft);
     const result = await onTestConnection();
     setTestResult(result);
@@ -71,19 +75,24 @@ export function VmixSettingsModal({
             </div>
           </div>
 
-          {/* HTTPS mixed-content warning */}
-          {isMixedContentBlocked() && (
-            <div className="mb-4 p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
+          {/* Bridge mode info */}
+          {bridgeMode && (
+            <div className="mb-4 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
               <div className="flex gap-2">
-                <svg className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                <svg className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div>
-                  <p className="text-yellow-400 text-xs font-medium">HTTPS blocks vMix connections</p>
-                  <p className="text-yellow-400/70 text-xs mt-1">
-                    This page is served over HTTPS but vMix uses HTTP. Browsers block this as mixed content.
-                    Open the admin page via <span className="font-mono">http://localhost:3000/admin</span> instead.
+                  <p className="text-blue-400 text-xs font-medium">Bridge Mode</p>
+                  <p className="text-blue-400/70 text-xs mt-1">
+                    Commands are sent via the SermonFlow server to the bridge script on the vMix PC.
+                    Run <span className="font-mono bg-white/5 px-1 rounded">vmix-bridge.js</span> on the vMix machine with:
                   </p>
+                  <div className="mt-2 p-2 bg-black/30 rounded-lg">
+                    <code className="text-[10px] text-green-400 font-mono break-all select-all">
+                      node vmix-bridge.js --url {appUrl} --room {roomCode}
+                    </code>
+                  </div>
                 </div>
               </div>
             </div>
@@ -110,96 +119,100 @@ export function VmixSettingsModal({
               </button>
             </label>
 
-            {/* Host IP */}
-            <div>
-              <label className="block text-xs text-gray-400 mb-1.5">vMix Host IP</label>
-              <input
-                type="text"
-                value={draft.host}
-                onChange={(e) => setDraft((d) => ({ ...d, host: e.target.value }))}
-                onBlur={(e) => {
-                  // Strip protocol/port if user pasted a full URL
-                  let h = e.target.value.trim();
-                  h = h.replace(/^https?:\/\//, '');
-                  h = h.replace(/\/.*$/, '');
-                  h = h.replace(/:\d+$/, '');
-                  setDraft((d) => ({ ...d, host: h }));
-                }}
-                placeholder="192.168.1.100"
-                className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-gray-500 outline-none focus:border-blue-500/50 transition-colors"
-              />
-            </div>
+            {/* Direct mode fields (only when not in bridge mode) */}
+            {!bridgeMode && (
+              <>
+                {/* Host IP */}
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1.5">vMix Host IP</label>
+                  <input
+                    type="text"
+                    value={draft.host}
+                    onChange={(e) => setDraft((d) => ({ ...d, host: e.target.value }))}
+                    onBlur={(e) => {
+                      let h = e.target.value.trim();
+                      h = h.replace(/^https?:\/\//, '');
+                      h = h.replace(/\/.*$/, '');
+                      h = h.replace(/:\d+$/, '');
+                      setDraft((d) => ({ ...d, host: h }));
+                    }}
+                    placeholder="192.168.1.100"
+                    className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-gray-500 outline-none focus:border-blue-500/50 transition-colors"
+                  />
+                </div>
 
-            {/* Port + Title Input — side by side */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1.5">Port</label>
-                <input
-                  type="number"
-                  value={draft.port}
-                  onChange={(e) => setDraft((d) => ({ ...d, port: parseInt(e.target.value) || 8088 }))}
-                  className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm outline-none focus:border-blue-500/50 transition-colors"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1.5">Title Input #</label>
-                <input
-                  type="text"
-                  value={draft.titleInput}
-                  onChange={(e) => setDraft((d) => ({ ...d, titleInput: e.target.value }))}
-                  placeholder="1"
-                  className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-gray-500 outline-none focus:border-blue-500/50 transition-colors"
-                />
-              </div>
-            </div>
+                {/* Port + Title Input */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1.5">Port</label>
+                    <input
+                      type="number"
+                      value={draft.port}
+                      onChange={(e) => setDraft((d) => ({ ...d, port: parseInt(e.target.value) || 8088 }))}
+                      className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm outline-none focus:border-blue-500/50 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1.5">Title Input #</label>
+                    <input
+                      type="text"
+                      value={draft.titleInput}
+                      onChange={(e) => setDraft((d) => ({ ...d, titleInput: e.target.value }))}
+                      placeholder="1"
+                      className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-gray-500 outline-none focus:border-blue-500/50 transition-colors"
+                    />
+                  </div>
+                </div>
 
-            {/* Field Names */}
-            <div>
-              <label className="block text-xs text-gray-400 mb-1.5">Reference Field Name</label>
-              <input
-                type="text"
-                value={draft.referenceField}
-                onChange={(e) => setDraft((d) => ({ ...d, referenceField: e.target.value }))}
-                placeholder="Headline.Text"
-                className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-gray-500 outline-none focus:border-blue-500/50 transition-colors"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-400 mb-1.5">Verse Text Field Name</label>
-              <input
-                type="text"
-                value={draft.verseTextField}
-                onChange={(e) => setDraft((d) => ({ ...d, verseTextField: e.target.value }))}
-                placeholder="Description.Text"
-                className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-gray-500 outline-none focus:border-blue-500/50 transition-colors"
-              />
-            </div>
+                {/* Field Names */}
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1.5">Reference Field Name</label>
+                  <input
+                    type="text"
+                    value={draft.referenceField}
+                    onChange={(e) => setDraft((d) => ({ ...d, referenceField: e.target.value }))}
+                    placeholder="Headline.Text"
+                    className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-gray-500 outline-none focus:border-blue-500/50 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1.5">Verse Text Field Name</label>
+                  <input
+                    type="text"
+                    value={draft.verseTextField}
+                    onChange={(e) => setDraft((d) => ({ ...d, verseTextField: e.target.value }))}
+                    placeholder="Description.Text"
+                    className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-gray-500 outline-none focus:border-blue-500/50 transition-colors"
+                  />
+                </div>
 
-            {/* Test Connection */}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleTest}
-                disabled={!draft.host || isTesting}
-                className="flex items-center gap-2 px-4 py-2.5 glass border border-white/10 hover:border-blue-500/30 hover:bg-blue-500/10 text-gray-300 text-sm font-medium rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isTesting ? (
-                  <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.858 15.355-5.858 21.213 0" />
-                  </svg>
-                )}
-                Test Connection
-              </button>
-              {testResult && (
-                <span className={`text-xs font-medium ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>
-                  {testResult.success ? 'Connected!' : testResult.error || 'Failed'}
-                </span>
-              )}
-              {!testResult && isConnected && (
-                <span className="text-xs font-medium text-green-400/60">Previously connected</span>
-              )}
-            </div>
+                {/* Test Connection */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleTest}
+                    disabled={!draft.host || isTesting}
+                    className="flex items-center gap-2 px-4 py-2.5 glass border border-white/10 hover:border-blue-500/30 hover:bg-blue-500/10 text-gray-300 text-sm font-medium rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {isTesting ? (
+                      <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.858 15.355-5.858 21.213 0" />
+                      </svg>
+                    )}
+                    Test Connection
+                  </button>
+                  {testResult && (
+                    <span className={`text-xs font-medium ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>
+                      {testResult.success ? 'Connected!' : testResult.error || 'Failed'}
+                    </span>
+                  )}
+                  {!testResult && isConnected && (
+                    <span className="text-xs font-medium text-green-400/60">Previously connected</span>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Buttons */}
