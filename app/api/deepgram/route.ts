@@ -43,8 +43,8 @@ export async function GET(request: NextRequest) {
   // Build Deepgram WebSocket URL with optimal settings
   const params = new URLSearchParams();
 
-  // Model
-  params.set('model', 'nova-2');
+  // Model — Nova-3 with keyterm prompting (faster, more accurate than Nova-2)
+  params.set('model', 'nova-3');
   params.set('language', 'en');
 
   // Smart features
@@ -69,16 +69,15 @@ export async function GET(request: NextRequest) {
   params.set('sample_rate', '16000');
   params.set('channels', '1');
 
-  // Only boost the most critical Bible book names to keep URL short.
-  // Full keyword list made the URL ~2300 chars which Deepgram rejects.
-  const TOP_KEYWORDS = [
+  // Nova-3 uses 'keyterm' (not 'keywords') — no intensifier needed
+  const TOP_KEYTERMS = [
     'Genesis', 'Exodus', 'Psalms', 'Proverbs', 'Isaiah',
     'Matthew', 'Mark', 'Luke', 'John', 'Acts', 'Romans',
     'Corinthians', 'Galatians', 'Ephesians', 'Hebrews',
     'Revelation', 'Jesus', 'Christ', 'scripture',
   ];
-  for (const keyword of TOP_KEYWORDS) {
-    params.append('keywords', `${keyword}:2`);
+  for (const term of TOP_KEYTERMS) {
+    params.append('keyterm', term);
   }
 
   const wsUrl = `wss://api.deepgram.com/v1/listen?${params.toString()}`;
