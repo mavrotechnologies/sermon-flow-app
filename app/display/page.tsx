@@ -3,16 +3,10 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-interface VerseItem {
-  number: number;
-  text: string;
-}
-
 interface ScriptureDisplay {
   reference: string;
   verseText: string;
   version?: string;
-  verses?: VerseItem[];
 }
 
 // Fixed channel — matches useVmixSettings DISPLAY_CHANNEL
@@ -21,39 +15,30 @@ const DISPLAY_CHANNEL = 'display';
 function DisplayContent() {
   const searchParams = useSearchParams();
   const roomParam = searchParams.get('room');
-  // Use room param if provided, otherwise use the fixed display channel
   const roomCode = roomParam || DISPLAY_CHANNEL;
 
   const [scripture, setScripture] = useState<ScriptureDisplay | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const verseRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const refRef = useRef<HTMLDivElement>(null);
 
-  // Auto text sizing — binary search for the largest font that fits
+  // Optimized auto-size — measure reference once, binary search verse only
   const autoSize = useCallback(() => {
     const verse = verseRef.current;
     const container = containerRef.current;
+    const refEl = refRef.current;
     if (!verse || !container) return;
 
-    // Available space inside padding
-    const cs = getComputedStyle(container);
-    const availableH = container.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
-
-    // Measure total content height at current verse font size
-    const contentHeight = () => {
-      let h = 0;
-      for (let i = 0; i < container.children.length; i++) {
-        const child = container.children[i] as HTMLElement;
-        const m = getComputedStyle(child);
-        h += child.offsetHeight + parseFloat(m.marginTop) + parseFloat(m.marginBottom);
-      }
-      return h;
-    };
+    // Available height
+    const availableH = container.clientHeight - 20; // 10px top + 10px bottom padding
+    // Fixed height for reference line
+    const refH = refEl ? refEl.offsetHeight + 16 : 60; // 16px gap
+    const verseAvailH = availableH - refH;
 
     const MIN = 36;
-    const MAX = Math.round(window.innerWidth * 0.08); // 8vw
+    const MAX = Math.round(window.innerWidth * 0.08);
 
-    // Binary search: find largest size that fits
     let lo = MIN;
     let hi = MAX;
     let best = MIN;
@@ -61,7 +46,7 @@ function DisplayContent() {
     while (lo <= hi) {
       const mid = Math.round((lo + hi) / 2);
       verse.style.fontSize = `${mid}px`;
-      if (contentHeight() <= availableH) {
+      if (verse.offsetHeight <= verseAvailH) {
         best = mid;
         lo = mid + 1;
       } else {
@@ -74,14 +59,10 @@ function DisplayContent() {
 
   useEffect(() => {
     if (scripture) {
-      // Instant — no delay, just measure after paint
-      requestAnimationFrame(() => {
-        requestAnimationFrame(autoSize);
-      });
+      requestAnimationFrame(autoSize);
     }
   }, [scripture, autoSize]);
 
-  // Resize listener
   useEffect(() => {
     window.addEventListener('resize', autoSize);
     return () => window.removeEventListener('resize', autoSize);
@@ -96,7 +77,6 @@ function DisplayContent() {
 
     function connect() {
       eventSource = new EventSource(`/api/stream?room=${roomCode}`);
-
       eventSource.onopen = () => setIsConnected(true);
       eventSource.onerror = () => {
         setIsConnected(false);
@@ -113,7 +93,6 @@ function DisplayContent() {
               reference: payload.reference || '',
               verseText: payload.verseText || '',
               version: payload.version,
-              verses: payload.verses,
             });
           } else if (payload?.action === 'hide') {
             setScripture(null);
@@ -127,7 +106,6 @@ function DisplayContent() {
     }
 
     connect();
-
     return () => {
       clearTimeout(reconnectTimer);
       eventSource?.close();
@@ -159,7 +137,6 @@ function DisplayContent() {
         }}
       />
 
-      {/* Scripture content — instant, no transitions */}
       {scripture && (
         <div
           ref={containerRef}
@@ -168,13 +145,12 @@ function DisplayContent() {
             inset: 0,
             display: 'flex',
             flexDirection: 'column',
-            alignItems: 'center',
             justifyContent: 'center',
             padding: '10px 20px',
             zIndex: 5,
           }}
         >
-          {/* Verse text — bold, fills the screen */}
+          {/* Verse text with (VERSION) inline at the end */}
           <div
             ref={verseRef}
             style={{
@@ -184,70 +160,34 @@ function DisplayContent() {
               color: '#ffffff',
               textAlign: 'center',
               lineHeight: 1.3,
-              maxWidth: '96%',
-              margin: 0,
-              textShadow: '2px 2px 6px rgba(0,0,0,0.7)',
+              maxWidth: '100%',
+              margin: '0 auto',
+              textShadow: '2px 2px 8px rgba(0,0,0,0.8)',
             }}
           >
-            {scripture.verses && scripture.verses.length > 1 ? (
-              // Multiple verses — show each with superscript number
-              scripture.verses.map((v, i) => (
-                <span key={i}>
-                  <sup
-                    style={{
-                      fontSize: '0.5em',
-                      fontWeight: 700,
-                      color: '#d4a843',
-                      verticalAlign: 'super',
-                      marginRight: '0.1em',
-                      lineHeight: 1,
-                    }}
-                  >
-                    {v.number}
-                  </sup>
-                  {v.text}
-                  {i < scripture.verses!.length - 1 ? ' ' : ''}
-                </span>
-              ))
-            ) : (
-              // Single verse — just the text
-              scripture.verseText
+            {scripture.verseText}
+            {scripture.version && (
+              <span style={{ color: '#8a9ab5', marginLeft: '0.3em' }}>
+                ({scripture.version})
+              </span>
             )}
           </div>
 
-          {/* Reference + version — same font size */}
+          {/* Reference — bottom right */}
           <div
+            ref={refRef}
             style={{
-              marginTop: '1.5%',
-              display: 'flex',
-              alignItems: 'baseline',
-              gap: '0.3em',
+              fontFamily: "'Inter', sans-serif",
+              fontSize: '3vw',
+              fontWeight: 700,
+              color: '#d4a843',
+              textAlign: 'right',
+              marginTop: '12px',
+              paddingRight: '2%',
+              textShadow: '2px 2px 6px rgba(0,0,0,0.7)',
             }}
           >
-            <span
-              style={{
-                fontFamily: "'Inter', sans-serif",
-                fontSize: '3.2vw',
-                fontWeight: 700,
-                color: '#d4a843',
-                textShadow: '2px 2px 6px rgba(0,0,0,0.7)',
-              }}
-            >
-              {scripture.reference}
-            </span>
-            {scripture.version && (
-              <span
-                style={{
-                  fontFamily: "'Inter', sans-serif",
-                  fontSize: '3.2vw',
-                  fontWeight: 700,
-                  color: '#8a9ab5',
-                  textShadow: '1px 1px 4px rgba(0,0,0,0.6)',
-                }}
-              >
-                {scripture.version}
-              </span>
-            )}
+            {scripture.reference}
           </div>
         </div>
       )}

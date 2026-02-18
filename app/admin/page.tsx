@@ -926,7 +926,19 @@ export default function AdminPage() {
                           </div>
                           <div className="flex items-center gap-0.5 bg-white/5 rounded-lg p-0.5">
                             <button
-                              onClick={() => navigateVerse(scripture.id, 'prev')}
+                              onClick={() => {
+                                navigateVerse(scripture.id, 'prev');
+                                // If this scripture is on screen, re-present after nav
+                                if (presentedId === scripture.id && vmixSettings.enabled) {
+                                  setTimeout(() => {
+                                    const s = detectedScriptures.find(ds => ds.id === scripture.id);
+                                    if (s) {
+                                      const ref = `${s.book} ${s.chapter}:${s.verseStart}`;
+                                      vmixPresentScripture(ref, s.verses[0]?.text || '', translation);
+                                    }
+                                  }, 100);
+                                }
+                              }}
                               disabled={scripture.verseStart <= 1}
                               className="p-2 rounded-md hover:bg-white/10 active:bg-white/20 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
                               title="Previous verse"
@@ -939,7 +951,19 @@ export default function AdminPage() {
                               :{scripture.verseStart}
                             </span>
                             <button
-                              onClick={() => navigateVerse(scripture.id, 'next')}
+                              onClick={() => {
+                                navigateVerse(scripture.id, 'next');
+                                // If this scripture is on screen, re-present after nav
+                                if (presentedId === scripture.id && vmixSettings.enabled) {
+                                  setTimeout(() => {
+                                    const s = detectedScriptures.find(ds => ds.id === scripture.id);
+                                    if (s) {
+                                      const ref = `${s.book} ${s.chapter}:${s.verseStart}`;
+                                      vmixPresentScripture(ref, s.verses[0]?.text || '', translation);
+                                    }
+                                  }, 100);
+                                }
+                              }}
                               className="p-2 rounded-md hover:bg-white/10 active:bg-white/20 transition-all"
                               title="Next verse"
                             >
@@ -963,13 +987,10 @@ export default function AdminPage() {
                               {vmixSettings.enabled && (
                                 <button
                                   onClick={async () => {
-                                    const ref = `${scripture.book} ${scripture.chapter}:${scripture.verseStart}${scripture.verseEnd && scripture.verseEnd !== scripture.verseStart ? `-${scripture.verseEnd}` : ''}`;
-                                    const verseText = scripture.verses.map(v => v.text).join(' ');
-                                    const verses = scripture.verses.map((v, i) => ({
-                                      number: scripture.verseStart + i,
-                                      text: v.text,
-                                    }));
-                                    const ok = await vmixPresentScripture(ref, verseText, translation, verses);
+                                    // Present ONE verse at a time (current verseStart)
+                                    const ref = `${scripture.book} ${scripture.chapter}:${scripture.verseStart}`;
+                                    const verseText = scripture.verses[0]?.text || '';
+                                    const ok = await vmixPresentScripture(ref, verseText, translation);
                                     if (ok) {
                                       setPresentedId(scripture.id);
                                       setTimeout(() => setPresentedId(null), 2000);
@@ -1003,11 +1024,18 @@ export default function AdminPage() {
                                 onClick={() => {
                                   const ref = `${scripture.book} ${scripture.chapter}:${scripture.verseStart}${scripture.verseEnd && scripture.verseEnd !== scripture.verseStart ? `-${scripture.verseEnd}` : ''}`;
                                   const trans = scripture.verses[0]?.translation || translation;
-                                  const copyLines = scripture.verses.map((v, i) => {
-                                    const vNum = scripture.verseStart + i;
-                                    return `${vNum} ${v.text}`;
-                                  });
-                                  const copyText = `${ref} (${trans})\n${copyLines.join('\n')}`;
+                                  let bodyText: string;
+                                  if (scripture.verses.length === 1) {
+                                    // Single verse — no verse number
+                                    bodyText = scripture.verses[0].text;
+                                  } else {
+                                    // Multiple verses — each on its own line with number
+                                    bodyText = scripture.verses.map((v, i) => {
+                                      const vNum = scripture.verseStart + i;
+                                      return `${vNum} ${v.text}`;
+                                    }).join('\n');
+                                  }
+                                  const copyText = `${ref} (${trans})\n${bodyText}`;
                                   navigator.clipboard.writeText(copyText);
                                   setCopiedId(scripture.id);
                                   setTimeout(() => setCopiedId(null), 2000);

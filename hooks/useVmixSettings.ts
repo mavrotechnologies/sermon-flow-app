@@ -71,13 +71,7 @@ export function useVmixSettings({ roomCode, broadcastVmix }: UseVmixSettingsOpti
     ): Promise<boolean> => {
       if (!settings.enabled) return false;
 
-      // If something is already showing, hide first
-      if (overlayRef.current.isShowing) {
-        const hidePayload: VmixCommandPayload = { action: 'hide' };
-        broadcastVmix(roomCode, hidePayload);
-        broadcastVmix(DISPLAY_CHANNEL, hidePayload);
-        await new Promise((r) => setTimeout(r, 100));
-      }
+      // No delay — just swap instantly for zero lag
 
       const payload: VmixCommandPayload = { action: 'present', reference, verseText, version, verses };
       // Broadcast to both the room and the fixed display channel
