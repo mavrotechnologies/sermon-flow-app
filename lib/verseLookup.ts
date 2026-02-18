@@ -101,51 +101,51 @@ async function lookupApiBible(
   translation: BibleTranslation
 ): Promise<BibleVerse[]> {
   try {
-    const params = new URLSearchParams({
-      book: ref.book,
-      chapter: ref.chapter.toString(),
-      verse: ref.verseStart.toString(),
-      translation,
-    });
+    const endVerse = ref.verseEnd || ref.verseStart;
 
-    if (ref.verseEnd && ref.verseEnd !== ref.verseStart) {
-      params.set('verseEnd', ref.verseEnd.toString());
-    }
-
-    const response = await fetch(`/api/bible-verse?${params}`);
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      if (data.useFallback) {
-        // Fall back to bible-api.com with KJV
-        return lookupBibleApi(ref, 'KJV');
-      }
-      throw new Error(`API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    if (data.text) {
-      // If it's a range, we get combined text - split into verses if needed
-      const verses: BibleVerse[] = [];
-
-      // For now, return as single combined verse
-      // Use the translation from API response (actual translation used)
-      verses.push({
-        book: data.book || ref.book,
-        chapter: data.chapter || ref.chapter,
-        verse: ref.verseStart,
-        text: data.text,
-        translation: data.translation || translation,
+    // Fetch each verse individually so we get separate texts
+    const promises: Promise<BibleVerse | null>[] = [];
+    for (let v = ref.verseStart; v <= endVerse; v++) {
+      const params = new URLSearchParams({
+        book: ref.book,
+        chapter: ref.chapter.toString(),
+        verse: v.toString(),
+        translation,
       });
 
-      return verses;
+      promises.push(
+        fetch(`/api/bible-verse?${params}`)
+          .then(async (response) => {
+            if (!response.ok) {
+              const data = await response.json().catch(() => ({}));
+              if (data.useFallback) return null;
+              return null;
+            }
+            const data = await response.json();
+            if (data.text) {
+              return {
+                book: data.book || ref.book,
+                chapter: data.chapter || ref.chapter,
+                verse: v,
+                text: data.text,
+                translation: data.translation || translation,
+              };
+            }
+            return null;
+          })
+          .catch(() => null)
+      );
     }
 
-    return [];
+    const results = await Promise.all(promises);
+    const verses = results.filter((v): v is BibleVerse => v !== null);
+
+    if (verses.length > 0) return verses;
+
+    // Fall back to bible-api.com
+    return lookupBibleApi(ref, 'KJV');
   } catch (error) {
     console.error('API.Bible lookup failed:', error);
-    // Fall back to bible-api.com
     return lookupBibleApi(ref, 'KJV');
   }
 }
