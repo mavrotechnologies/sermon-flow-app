@@ -17,7 +17,7 @@ function DisplayContent() {
   const verseRef = useRef<HTMLParagraphElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Auto text sizing: shrink font if content overflows
+  // Auto text sizing: shrink font if content overflows, but keep it large
   const autoSize = useCallback(() => {
     const verse = verseRef.current;
     const container = containerRef.current;
@@ -28,8 +28,8 @@ function DisplayContent() {
     const basePx = parseFloat(getComputedStyle(verse).fontSize);
     let size = basePx;
 
-    // Shrink until it fits (no scrollbar)
-    while (container.scrollHeight > container.clientHeight && size > 16) {
+    // Shrink until it fits — minimum 28px so it stays readable on projectors
+    while (container.scrollHeight > container.clientHeight && size > 28) {
       size -= 2;
       verse.style.fontSize = `${size}px`;
     }
@@ -123,24 +123,15 @@ function DisplayContent() {
         height: '100vh',
         overflow: 'hidden',
         position: 'relative',
-        background: '#0d1b2a',
+        background: '#000000',
       }}
     >
-      {/* Background image + overlay */}
+      {/* Background — deep dark with subtle texture */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
-          backgroundImage: 'linear-gradient(135deg, #0d1b2a 0%, #1b2838 30%, #162032 60%, #0d1b2a 100%)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'radial-gradient(ellipse at center, rgba(30,50,80,0.3) 0%, rgba(0,0,0,0.5) 100%)',
+          background: 'linear-gradient(180deg, #050a12 0%, #0a1628 40%, #0a1628 60%, #050a12 100%)',
         }}
       />
 
@@ -148,18 +139,18 @@ function DisplayContent() {
       <div
         style={{
           position: 'absolute',
-          bottom: 12,
-          left: 12,
-          width: 8,
-          height: 8,
+          bottom: 8,
+          left: 8,
+          width: 6,
+          height: 6,
           borderRadius: '50%',
           background: isConnected ? '#22c55e' : '#ef4444',
-          opacity: 0.4,
+          opacity: 0.3,
           zIndex: 10,
         }}
       />
 
-      {/* Scripture content */}
+      {/* Scripture content — BibleShow layout: large verse text centered, reference below */}
       {scripture && (
         <div
           ref={containerRef}
@@ -170,70 +161,65 @@ function DisplayContent() {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '5vh 10vw',
+            padding: '6vh 8vw 12vh',
             zIndex: 5,
           }}
         >
-          {/* Reference */}
-          <h1
-            style={{
-              fontFamily: "'Inter', 'Montserrat', system-ui, -apple-system, sans-serif",
-              fontSize: 'clamp(2.5rem, 5vw, 4.5rem)',
-              fontWeight: 700,
-              color: '#d4a843',
-              textAlign: 'center',
-              margin: 0,
-              letterSpacing: '0.05em',
-              textShadow: '0 2px 20px rgba(0,0,0,0.5)',
-            }}
-          >
-            {scripture.reference}
-          </h1>
-
-          {/* Decorative divider */}
-          <div
-            style={{
-              width: 200,
-              height: 2,
-              background: 'linear-gradient(90deg, transparent, rgba(212,168,67,0.5), transparent)',
-              margin: '20px 0 30px 0',
-            }}
-          />
-
-          {/* Verse text */}
+          {/* Verse text — dominant element, fills most of the screen */}
           <p
             ref={verseRef}
             style={{
-              fontFamily: "'Inter', 'Montserrat', system-ui, -apple-system, sans-serif",
-              fontSize: 'clamp(2rem, 4vw, 3.5rem)',
+              fontFamily: "'Georgia', 'Times New Roman', 'Palatino Linotype', serif",
+              fontSize: 'clamp(3rem, 6.5vw, 6rem)',
               fontWeight: 400,
               color: '#ffffff',
               textAlign: 'center',
-              lineHeight: 1.6,
-              maxWidth: '80vw',
+              lineHeight: 1.5,
+              maxWidth: '88vw',
               margin: 0,
-              textShadow: '0 2px 15px rgba(0,0,0,0.5)',
+              textShadow: '0 2px 30px rgba(0,0,0,0.7)',
+              wordSpacing: '0.05em',
             }}
           >
             {scripture.verseText}
           </p>
 
-          {/* Bible version label */}
-          {scripture.version && (
-            <div
+          {/* Reference + version — below verse text */}
+          <div
+            style={{
+              marginTop: '4vh',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.6em',
+            }}
+          >
+            <span
               style={{
-                position: 'absolute',
-                bottom: '4vh',
-                right: '4vw',
-                fontFamily: "system-ui, -apple-system, sans-serif",
-                fontSize: '1rem',
-                color: '#666666',
-                letterSpacing: '0.1em',
+                fontFamily: "'Georgia', 'Times New Roman', serif",
+                fontSize: 'clamp(1.8rem, 3.5vw, 3rem)',
+                fontWeight: 700,
+                color: '#d4a843',
+                letterSpacing: '0.02em',
+                textShadow: '0 2px 15px rgba(0,0,0,0.6)',
               }}
             >
-              {scripture.version}
-            </div>
-          )}
+              {scripture.reference}
+            </span>
+            {scripture.version && (
+              <span
+                style={{
+                  fontFamily: "'Georgia', 'Times New Roman', serif",
+                  fontSize: 'clamp(1.2rem, 2.2vw, 2rem)',
+                  fontWeight: 400,
+                  color: '#8a9ab5',
+                  letterSpacing: '0.05em',
+                  textShadow: '0 2px 10px rgba(0,0,0,0.5)',
+                }}
+              >
+                {scripture.version}
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>
