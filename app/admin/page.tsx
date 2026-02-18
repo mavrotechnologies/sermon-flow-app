@@ -50,17 +50,14 @@ export default function AdminPage() {
     broadcastVmix,
   } = useBroadcast();
 
-  // vMix integration hook (needs broadcastVmix for bridge mode)
+  // vMix / projector display hook
   const {
     settings: vmixSettings,
     overlayState: vmixOverlayState,
     updateSettings: updateVmixSettings,
     presentScripture: vmixPresentScripture,
     hideOverlay: vmixHideOverlay,
-    testConnection: vmixTestConnection,
-    isConnected: vmixIsConnected,
-    isTesting: vmixIsTesting,
-    useBridge: vmixUseBridge,
+    displayUrl: vmixDisplayUrl,
   } = useVmixSettings({ roomCode, broadcastVmix });
 
   // Sermon notes hook
@@ -473,13 +470,13 @@ export default function AdminPage() {
               <button
                 onClick={() => setShowVmixSettings(true)}
                 className={`p-2 md:p-2.5 glass border rounded-xl transition-all ${
-                  vmixSettings.enabled && (vmixUseBridge || vmixSettings.host)
+                  vmixSettings.enabled
                     ? 'border-blue-500/20 hover:border-blue-500/40 hover:bg-blue-500/10'
                     : 'border-white/10 hover:border-white/20 hover:bg-white/10'
                 }`}
                 title="vMix Settings"
               >
-                <svg className={`w-4 h-4 ${vmixSettings.enabled && (vmixUseBridge || vmixSettings.host) ? 'text-blue-400' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className={`w-4 h-4 ${vmixSettings.enabled ? 'text-blue-400' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
@@ -863,7 +860,7 @@ export default function AdminPage() {
                         );
                         setActiveTab('verses');
                       }}
-                      renderActions={vmixSettings.enabled && (vmixUseBridge || vmixSettings.host) ? (scripture) => {
+                      renderActions={vmixSettings.enabled ? (scripture) => {
                         const ref = scripture.verseEnd
                           ? `${scripture.book} ${scripture.chapter}:${scripture.verse}-${scripture.verseEnd}`
                           : `${scripture.book} ${scripture.chapter}:${scripture.verse}`;
@@ -872,7 +869,7 @@ export default function AdminPage() {
                           <button
                             onClick={async (e) => {
                               e.stopPropagation();
-                              const ok = await vmixPresentScripture(ref, verseText);
+                              const ok = await vmixPresentScripture(ref, verseText, translation);
                               if (ok) {
                                 setPresentedId(scripture.id);
                                 setTimeout(() => setPresentedId(null), 2000);
@@ -963,12 +960,12 @@ export default function AdminPage() {
                           <div className="mt-3 flex items-center justify-between">
                             <span className="text-xs text-gray-500">{scripture.verses[0]?.translation || translation} Translation</span>
                             <div className="flex items-center gap-2">
-                              {vmixSettings.enabled && (vmixUseBridge || vmixSettings.host) && (
+                              {vmixSettings.enabled && (
                                 <button
                                   onClick={async () => {
                                     const ref = `${scripture.book} ${scripture.chapter}:${scripture.verseStart}${scripture.verseEnd && scripture.verseEnd !== scripture.verseStart ? `-${scripture.verseEnd}` : ''}`;
                                     const verseText = scripture.verses.map(v => v.text).join(' ');
-                                    const ok = await vmixPresentScripture(ref, verseText);
+                                    const ok = await vmixPresentScripture(ref, verseText, translation);
                                     if (ok) {
                                       setPresentedId(scripture.id);
                                       setTimeout(() => setPresentedId(null), 2000);
@@ -1067,10 +1064,7 @@ export default function AdminPage() {
         onClose={() => setShowVmixSettings(false)}
         settings={vmixSettings}
         onSave={updateVmixSettings}
-        onTestConnection={vmixTestConnection}
-        isTesting={vmixIsTesting}
-        isConnected={vmixIsConnected}
-        roomCode={roomCode}
+        displayUrl={vmixDisplayUrl}
       />
     </div>
   );

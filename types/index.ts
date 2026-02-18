@@ -77,6 +77,7 @@ export interface VmixCommandPayload {
   action: 'present' | 'hide';
   reference?: string;
   verseText?: string;
+  version?: string;
 }
 
 export interface BroadcastMessage {

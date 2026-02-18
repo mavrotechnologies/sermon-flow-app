@@ -2,12 +2,6 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { VmixSettings, VmixOverlayState, VmixCommandPayload } from '@/types';
-import {
-  presentScripture as vmixPresent,
-  hideOverlay as vmixHide,
-  vmixTestConnection,
-  isMixedContentBlocked,
-} from '@/lib/vmix';
 
 const STORAGE_KEY = 'vmix-settings';
 
@@ -50,16 +44,9 @@ interface UseVmixSettingsOptions {
 export function useVmixSettings({ roomCode, broadcastVmix }: UseVmixSettingsOptions) {
   const [settings, setSettings] = useState<VmixSettings>(DEFAULT_SETTINGS);
   const [overlayState, setOverlayState] = useState<VmixOverlayState>(INITIAL_OVERLAY);
-  const [isTesting, setIsTesting] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
   const overlayRef = useRef(overlayState);
   overlayRef.current = overlayState;
 
-  // Bridge mode: on HTTPS, commands go through SSE broadcast → bridge script → vMix
-  // Direct mode: on HTTP, commands go directly to vMix via fetch
-  const useBridge = typeof window !== 'undefined' && isMixedContentBlocked();
-
-  // Load from localStorage on mount
   useEffect(() => {
     setSettings(loadSettings());
   }, []);
@@ -73,74 +60,37 @@ export function useVmixSettings({ roomCode, broadcastVmix }: UseVmixSettingsOpti
   }, []);
 
   const presentScripture = useCallback(
-    async (reference: string, verseText: string): Promise<boolean> => {
+    async (reference: string, verseText: string, version?: string): Promise<boolean> => {
       if (!settings.enabled) return false;
 
-      if (useBridge) {
-        // Bridge mode: send via SSE broadcast
-        if (overlayRef.current.isShowing) {
-          broadcastVmix(roomCode, { action: 'hide' });
-          await new Promise((r) => setTimeout(r, 600));
-        }
-        broadcastVmix(roomCode, { action: 'present', reference, verseText });
-        setOverlayState({
-          isShowing: true,
-          currentReference: reference,
-          currentText: verseText,
-          showingSince: Date.now(),
-        });
-        return true;
+      // If something is already showing, hide first
+      if (overlayRef.current.isShowing) {
+        broadcastVmix(roomCode, { action: 'hide' });
+        await new Promise((r) => setTimeout(r, 100));
       }
 
-      // Direct mode: call vMix HTTP API
-      if (!settings.host) return false;
-      if (overlayRef.current.isShowing) {
-        await vmixHide(settings);
-        await new Promise((r) => setTimeout(r, 550));
-      }
-      const result = await vmixPresent(settings, reference, verseText);
-      if (result.success) {
-        setOverlayState({
-          isShowing: true,
-          currentReference: reference,
-          currentText: verseText,
-          showingSince: Date.now(),
-        });
-      }
-      return result.success;
+      broadcastVmix(roomCode, { action: 'present', reference, verseText, version });
+      setOverlayState({
+        isShowing: true,
+        currentReference: reference,
+        currentText: verseText,
+        showingSince: Date.now(),
+      });
+      return true;
     },
-    [settings, useBridge, roomCode, broadcastVmix]
+    [settings.enabled, roomCode, broadcastVmix]
   );
 
   const hideOverlay = useCallback(async (): Promise<boolean> => {
     if (!settings.enabled) return false;
+    broadcastVmix(roomCode, { action: 'hide' });
+    setOverlayState(INITIAL_OVERLAY);
+    return true;
+  }, [settings.enabled, roomCode, broadcastVmix]);
 
-    if (useBridge) {
-      broadcastVmix(roomCode, { action: 'hide' });
-      setOverlayState(INITIAL_OVERLAY);
-      return true;
-    }
-
-    if (!settings.host) return false;
-    const result = await vmixHide(settings);
-    if (result.success) {
-      setOverlayState(INITIAL_OVERLAY);
-    }
-    return result.success;
-  }, [settings, useBridge, roomCode, broadcastVmix]);
-
-  const testConnection = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
-    if (useBridge) {
-      // In bridge mode, we can't test from the browser — the bridge handles the connection
-      return { success: true, error: undefined };
-    }
-    if (!settings.host) return { success: false, error: 'No host configured' };
-    setIsTesting(true);
-    const result = await vmixTestConnection(settings);
-    setIsConnected(result.success);
-    setIsTesting(false);
-    return result;
-  }, [settings, useBridge]);
+  const displayUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/display?room=${roomCode}`
+    : `/display?room=${roomCode}`;
 
   return {
     settings,
@@ -148,9 +98,6 @@ export function useVmixSettings({ roomCode, broadcastVmix }: UseVmixSettingsOpti
     updateSettings,
     presentScripture,
     hideOverlay,
-    testConnection,
-    isConnected,
-    isTesting,
-    useBridge,
+    displayUrl,
   };
 }

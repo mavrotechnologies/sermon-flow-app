@@ -2,17 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import type { VmixSettings } from '@/types';
-import { isMixedContentBlocked } from '@/lib/vmix';
 
 interface VmixSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: VmixSettings;
   onSave: (settings: Partial<VmixSettings>) => void;
-  onTestConnection: () => Promise<{ success: boolean; error?: string }>;
-  isTesting: boolean;
-  isConnected: boolean;
-  roomCode: string;
+  displayUrl: string;
 }
 
 export function VmixSettingsModal({
@@ -20,36 +16,29 @@ export function VmixSettingsModal({
   onClose,
   settings,
   onSave,
-  onTestConnection,
-  isTesting,
-  isConnected,
-  roomCode,
+  displayUrl,
 }: VmixSettingsModalProps) {
   const [draft, setDraft] = useState(settings);
-  const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null);
-  const bridgeMode = isMixedContentBlocked();
+  const [copied, setCopied] = useState(false);
 
-  // Sync draft when modal opens
   useEffect(() => {
     if (isOpen) {
       setDraft(settings);
-      setTestResult(null);
+      setCopied(false);
     }
   }, [isOpen, settings]);
 
   if (!isOpen) return null;
 
-  const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
-
-  const handleTest = async () => {
-    onSave(draft);
-    const result = await onTestConnection();
-    setTestResult(result);
-  };
-
   const handleSave = () => {
     onSave(draft);
     onClose();
+  };
+
+  const copyUrl = () => {
+    navigator.clipboard.writeText(displayUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -70,38 +59,15 @@ export function VmixSettingsModal({
               </svg>
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-white">vMix Settings</h3>
-              <p className="text-xs text-gray-500">Configure live video overlay</p>
+              <h3 className="text-lg font-semibold text-white">Projector Display</h3>
+              <p className="text-xs text-gray-500">Scripture display for vMix / projector</p>
             </div>
           </div>
-
-          {/* Bridge mode info */}
-          {bridgeMode && (
-            <div className="mb-4 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
-              <div className="flex gap-2">
-                <svg className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div>
-                  <p className="text-blue-400 text-xs font-medium">Bridge Mode</p>
-                  <p className="text-blue-400/70 text-xs mt-1">
-                    Commands are sent via the SermonFlow server to the bridge script on the vMix PC.
-                    Run <span className="font-mono bg-white/5 px-1 rounded">vmix-bridge.js</span> on the vMix machine with:
-                  </p>
-                  <div className="mt-2 p-2 bg-black/30 rounded-lg">
-                    <code className="text-[10px] text-green-400 font-mono break-all select-all">
-                      node vmix-bridge.js --url {appUrl} --room {roomCode}
-                    </code>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           <div className="space-y-4">
             {/* Enable Toggle */}
             <label className="flex items-center justify-between cursor-pointer">
-              <span className="text-sm text-gray-300">Enable vMix Integration</span>
+              <span className="text-sm text-gray-300">Enable Projector Display</span>
               <button
                 type="button"
                 role="switch"
@@ -119,100 +85,40 @@ export function VmixSettingsModal({
               </button>
             </label>
 
-            {/* Direct mode fields (only when not in bridge mode) */}
-            {!bridgeMode && (
-              <>
-                {/* Host IP */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1.5">vMix Host IP</label>
-                  <input
-                    type="text"
-                    value={draft.host}
-                    onChange={(e) => setDraft((d) => ({ ...d, host: e.target.value }))}
-                    onBlur={(e) => {
-                      let h = e.target.value.trim();
-                      h = h.replace(/^https?:\/\//, '');
-                      h = h.replace(/\/.*$/, '');
-                      h = h.replace(/:\d+$/, '');
-                      setDraft((d) => ({ ...d, host: h }));
-                    }}
-                    placeholder="192.168.1.100"
-                    className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-gray-500 outline-none focus:border-blue-500/50 transition-colors"
-                  />
-                </div>
+            {/* Display URL */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1.5">Display URL (load in vMix Web Browser input)</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={displayUrl}
+                  className="flex-1 px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-xs font-mono outline-none select-all"
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
+                <button
+                  onClick={copyUrl}
+                  className={`px-3 py-2.5 rounded-xl text-xs font-medium transition-all shrink-0 ${
+                    copied
+                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                      : 'glass border border-white/10 hover:border-blue-500/30 hover:bg-blue-500/10 text-gray-300'
+                  }`}
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
 
-                {/* Port + Title Input */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1.5">Port</label>
-                    <input
-                      type="number"
-                      value={draft.port}
-                      onChange={(e) => setDraft((d) => ({ ...d, port: parseInt(e.target.value) || 8088 }))}
-                      className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm outline-none focus:border-blue-500/50 transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1.5">Title Input #</label>
-                    <input
-                      type="text"
-                      value={draft.titleInput}
-                      onChange={(e) => setDraft((d) => ({ ...d, titleInput: e.target.value }))}
-                      placeholder="1"
-                      className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-gray-500 outline-none focus:border-blue-500/50 transition-colors"
-                    />
-                  </div>
-                </div>
-
-                {/* Field Names */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1.5">Reference Field Name</label>
-                  <input
-                    type="text"
-                    value={draft.referenceField}
-                    onChange={(e) => setDraft((d) => ({ ...d, referenceField: e.target.value }))}
-                    placeholder="Headline.Text"
-                    className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-gray-500 outline-none focus:border-blue-500/50 transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1.5">Verse Text Field Name</label>
-                  <input
-                    type="text"
-                    value={draft.verseTextField}
-                    onChange={(e) => setDraft((d) => ({ ...d, verseTextField: e.target.value }))}
-                    placeholder="Description.Text"
-                    className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-gray-500 outline-none focus:border-blue-500/50 transition-colors"
-                  />
-                </div>
-
-                {/* Test Connection */}
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleTest}
-                    disabled={!draft.host || isTesting}
-                    className="flex items-center gap-2 px-4 py-2.5 glass border border-white/10 hover:border-blue-500/30 hover:bg-blue-500/10 text-gray-300 text-sm font-medium rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {isTesting ? (
-                      <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.858 15.355-5.858 21.213 0" />
-                      </svg>
-                    )}
-                    Test Connection
-                  </button>
-                  {testResult && (
-                    <span className={`text-xs font-medium ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>
-                      {testResult.success ? 'Connected!' : testResult.error || 'Failed'}
-                    </span>
-                  )}
-                  {!testResult && isConnected && (
-                    <span className="text-xs font-medium text-green-400/60">Previously connected</span>
-                  )}
-                </div>
-              </>
-            )}
+            {/* Setup Instructions */}
+            <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+              <p className="text-xs text-gray-400 font-medium mb-2">vMix Setup:</p>
+              <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
+                <li>In vMix, click <span className="text-gray-300">Add Input</span> &rarr; <span className="text-gray-300">Web Browser</span></li>
+                <li>Paste the Display URL above</li>
+                <li>Set resolution to <span className="text-gray-300">1920 x 1080</span></li>
+                <li>Use Fade/Cut in vMix to show the input on output</li>
+              </ol>
+            </div>
           </div>
 
           {/* Buttons */}
