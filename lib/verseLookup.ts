@@ -95,6 +95,7 @@ const PREMIUM_TRANSLATIONS = new Set(['NKJV', 'NIV', 'NLT']);
 
 /**
  * Look up verses from our API.Bible proxy (for premium translations)
+ * Uses a single API call for ranges, then splits the text per verse
  */
 async function lookupApiBible(
   ref: ScriptureReference,
@@ -102,8 +103,34 @@ async function lookupApiBible(
 ): Promise<BibleVerse[]> {
   try {
     const endVerse = ref.verseEnd || ref.verseStart;
+    const isSingleVerse = endVerse === ref.verseStart;
 
-    // Fetch each verse individually so we get separate texts
+    if (isSingleVerse) {
+      // Single verse — one request
+      const params = new URLSearchParams({
+        book: ref.book,
+        chapter: ref.chapter.toString(),
+        verse: ref.verseStart.toString(),
+        translation,
+      });
+
+      const response = await fetch(`/api/bible-verse?${params}`);
+      if (!response.ok) return lookupBibleApi(ref, 'KJV');
+
+      const data = await response.json();
+      if (data.text) {
+        return [{
+          book: data.book || ref.book,
+          chapter: data.chapter || ref.chapter,
+          verse: ref.verseStart,
+          text: data.text,
+          translation: data.translation || translation,
+        }];
+      }
+      return lookupBibleApi(ref, 'KJV');
+    }
+
+    // Range — fetch each verse individually (API.Bible returns combined text for ranges)
     const promises: Promise<BibleVerse | null>[] = [];
     for (let v = ref.verseStart; v <= endVerse; v++) {
       const params = new URLSearchParams({
@@ -116,11 +143,7 @@ async function lookupApiBible(
       promises.push(
         fetch(`/api/bible-verse?${params}`)
           .then(async (response) => {
-            if (!response.ok) {
-              const data = await response.json().catch(() => ({}));
-              if (data.useFallback) return null;
-              return null;
-            }
+            if (!response.ok) return null;
             const data = await response.json();
             if (data.text) {
               return {

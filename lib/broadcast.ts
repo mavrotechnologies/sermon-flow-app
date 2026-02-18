@@ -314,6 +314,11 @@ export class SSEClient {
         const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
 
         setTimeout(() => {
+            // Close the old EventSource before creating a new one
+            if (this.eventSource) {
+                this.eventSource.close();
+                this.eventSource = null;
+            }
             this.connect();
         }, delay);
     }

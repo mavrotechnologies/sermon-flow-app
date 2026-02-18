@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
           controller.enqueue(encoder.encode(': keep-alive\n\n'));
         } catch {
           clearInterval(keepAlive);
+          broadcastManager.removeClient(roomId, controller);
         }
       }, 30000);
 

@@ -60,6 +60,15 @@ export default function AdminPage() {
     displayUrl: vmixDisplayUrl,
   } = useVmixSettings({ roomCode, broadcastVmix });
 
+  // Stable callbacks for useSermonNotes (avoid re-creating options object every render)
+  const onNotesGenerated = useCallback((updatedNotes: import('@/types').SermonNote[]) => {
+    broadcastNotes(roomCode, { notes: updatedNotes, isGenerating: false });
+  }, [broadcastNotes, roomCode]);
+
+  const onSummaryGenerated = useCallback((summaryData: import('@/types').SermonSummary) => {
+    broadcastSummary(roomCode, { summary: summaryData, isGenerating: false });
+  }, [broadcastSummary, roomCode]);
+
   // Sermon notes hook
   const {
     notes: sermonNotes,
@@ -70,12 +79,8 @@ export default function AdminPage() {
     generateSummary,
     clear: clearSermonNotes,
   } = useSermonNotes({
-    onNotesGenerated: (updatedNotes) => {
-      broadcastNotes(roomCode, { notes: updatedNotes, isGenerating: false });
-    },
-    onSummaryGenerated: (summary) => {
-      broadcastSummary(roomCode, { summary, isGenerating: false });
-    },
+    onNotesGenerated,
+    onSummaryGenerated,
   });
 
   // Track recent transcript text for GPT detection
@@ -126,6 +131,10 @@ export default function AdminPage() {
     clearScriptures,
     setTranslation: setScriptureTranslation,
   } = useScriptureDetection();
+
+  // Ref for latest detectedScriptures (avoids stale closures in setTimeout callbacks)
+  const detectedScripturesRef = useRef(detectedScriptures);
+  detectedScripturesRef.current = detectedScriptures;
 
   // Track which GPT scriptures have been synced to explicit references
   const syncedGPTScripturesRef = useRef<Set<string>>(new Set());
@@ -268,15 +277,19 @@ export default function AdminPage() {
     broadcastStatus(roomCode, { isRecording: true, isConnected: true });
   }, [_startRecording, roomCode, broadcastStatus]);
 
+  // Use ref for sermonNotes.length to avoid re-creating stopRecording on every notes change
+  const sermonNotesLengthRef = useRef(sermonNotes.length);
+  sermonNotesLengthRef.current = sermonNotes.length;
+
   const stopRecording = useCallback(() => {
     _stopRecording();
     broadcastStatus(roomCode, { isRecording: false, isConnected: true });
     // Generate final sermon summary if enough notes exist
-    if (sermonNotes.length >= 2) {
+    if (sermonNotesLengthRef.current >= 2) {
       broadcastSummary(roomCode, { summary: null, isGenerating: true });
       generateSummary();
     }
-  }, [_stopRecording, roomCode, broadcastStatus, sermonNotes.length, broadcastSummary, generateSummary]);
+  }, [_stopRecording, roomCode, broadcastStatus, broadcastSummary, generateSummary]);
 
   // Audio devices hook
   const {
@@ -926,17 +939,15 @@ export default function AdminPage() {
                           </div>
                           <div className="flex items-center gap-0.5 bg-white/5 rounded-lg p-0.5">
                             <button
-                              onClick={() => {
-                                navigateVerse(scripture.id, 'prev');
+                              onClick={async () => {
+                                await navigateVerse(scripture.id, 'prev');
                                 // If this scripture is on screen, re-present after nav
                                 if (presentedId === scripture.id && vmixSettings.enabled) {
-                                  setTimeout(() => {
-                                    const s = detectedScriptures.find(ds => ds.id === scripture.id);
-                                    if (s) {
-                                      const ref = `${s.book} ${s.chapter}:${s.verseStart}`;
-                                      vmixPresentScripture(ref, s.verses[0]?.text || '', translation);
-                                    }
-                                  }, 100);
+                                  const s = detectedScripturesRef.current.find(ds => ds.id === scripture.id);
+                                  if (s) {
+                                    const ref = `${s.book} ${s.chapter}:${s.verseStart}`;
+                                    vmixPresentScripture(ref, s.verses[0]?.text || '', translation);
+                                  }
                                 }
                               }}
                               disabled={scripture.verseStart <= 1}
@@ -951,17 +962,15 @@ export default function AdminPage() {
                               :{scripture.verseStart}
                             </span>
                             <button
-                              onClick={() => {
-                                navigateVerse(scripture.id, 'next');
+                              onClick={async () => {
+                                await navigateVerse(scripture.id, 'next');
                                 // If this scripture is on screen, re-present after nav
                                 if (presentedId === scripture.id && vmixSettings.enabled) {
-                                  setTimeout(() => {
-                                    const s = detectedScriptures.find(ds => ds.id === scripture.id);
-                                    if (s) {
-                                      const ref = `${s.book} ${s.chapter}:${s.verseStart}`;
-                                      vmixPresentScripture(ref, s.verses[0]?.text || '', translation);
-                                    }
-                                  }, 100);
+                                  const s = detectedScripturesRef.current.find(ds => ds.id === scripture.id);
+                                  if (s) {
+                                    const ref = `${s.book} ${s.chapter}:${s.verseStart}`;
+                                    vmixPresentScripture(ref, s.verses[0]?.text || '', translation);
+                                  }
                                 }
                               }}
                               className="p-2 rounded-md hover:bg-white/10 active:bg-white/20 transition-all"

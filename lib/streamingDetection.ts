@@ -134,12 +134,33 @@ export function createStreamingState(): StreamingDetectionState {
   };
 }
 
+// Words that are common English and also Bible book names — require chapter/verse context
+const AMBIGUOUS_BOOKS = new Set([
+  'Job', 'Mark', 'Acts', 'Ruth', 'John', 'James', 'Jude',
+  'Song of Solomon', 'Joel', 'Amos', 'Jonah', 'Micah', 'Titus',
+]);
+
 /**
  * Detect book name in text
+ * For ambiguous book names (common English words), requires nearby chapter/verse context
  */
 export function detectBookName(text: string): string | null {
   for (const { pattern, book } of BOOK_PATTERNS) {
     if (pattern.test(text)) {
+      // For ambiguous names, require a number nearby (chapter/verse indicator)
+      if (AMBIGUOUS_BOOKS.has(book)) {
+        // Check if there's a chapter:verse pattern or "chapter X" or just digits nearby
+        const hasChapterVerse = /\d+\s*[:.]\s*\d+/.test(text) ||
+          /\bchapter\s+\d/i.test(text) ||
+          /\bverse\s+\d/i.test(text);
+        // Also accept if the book name is directly followed by a number (e.g., "John 3")
+        const bookFollowedByNumber = new RegExp(
+          pattern.source + '\\s+\\d', 'i'
+        ).test(text);
+        if (!hasChapterVerse && !bookFollowedByNumber) {
+          continue; // Skip — likely a common English word, not a Bible book
+        }
+      }
       return book;
     }
   }

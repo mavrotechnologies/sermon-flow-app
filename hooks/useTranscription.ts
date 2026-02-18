@@ -145,6 +145,10 @@ export function useTranscription(
         // If Deepgram fails, fall back to browser speech recognition
         if (err.includes('not configured') || err.includes('Connection error') || err.includes('Failed')) {
           console.log('Deepgram unavailable, falling back to browser speech recognition');
+          // Clean up Deepgram instance before falling back (release mic/audio)
+          if (deepgramRef.current) {
+            deepgramRef.current.abort();
+          }
           deepgramRef.current = null;
           startBrowserRecognition();
         } else {

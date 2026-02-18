@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { SermonNote, SermonSummary, DetectedScripture } from '@/types';
 
 const WORD_THRESHOLD = 200;
@@ -132,6 +132,15 @@ export function useSermonNotes(options: UseSermonNotesOptions = {}) {
 
   const updateScriptures = useCallback((scriptures: DetectedScripture[]) => {
     scripturesRef.current = scriptures;
+  }, []);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
   }, []);
 
   const clear = useCallback(() => {

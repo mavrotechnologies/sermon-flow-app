@@ -1,40 +1,11 @@
 import type { ScriptureReference } from '@/types';
 import { normalizeSpokenText, mightContainScripture, resolveRelativeReferences, type ActiveScriptureContext } from './normalizeSpoken';
 
-// bible-passage-reference-parser provides a global bcv_parser when loaded
-// We'll dynamically import it since it's a browser library
-let bcvParser: BcvParser | null = null;
-
-interface BcvParser {
-  parse: (text: string) => BcvParser;
-  osis: () => string;
-  osis_and_indices: () => OsisAndIndices[];
-}
-
-interface OsisAndIndices {
-  osis: string;
-  indices: [number, number];
-}
-
 /**
- * Initialize the BCV parser
- * Must be called before using detectScriptures
+ * Initialize the parser (no-op, kept for API compatibility)
  */
 export async function initializeParser(): Promise<void> {
-  if (bcvParser) return;
-
-  try {
-    // Dynamic import of the parser
-    const bcvModule = await import('bible-passage-reference-parser/js/en_bcv_parser');
-    const BCVParser = (bcvModule as { default?: { bcv_parser: new () => BcvParser } }).default?.bcv_parser;
-
-    if (BCVParser) {
-      bcvParser = new BCVParser();
-    }
-  } catch (error) {
-    console.error('Failed to initialize BCV parser:', error);
-    // Fallback: use regex-based detection
-  }
+  // Regex-based detection is used directly — no external parser needed
 }
 
 /**
@@ -222,28 +193,19 @@ function formatDetectedBook(book: string): string {
 export function detectScriptures(text: string, context?: ActiveScriptureContext | null): ScriptureReference[] {
   // Quick check if text might contain scripture
   if (!mightContainScripture(text)) {
-    console.log('[ScriptureDetector] No potential scripture found in:', text);
     return [];
   }
 
-  console.log('[ScriptureDetector] Processing:', text);
-  console.log('[ScriptureDetector] Context:', context);
-
   // Normalize spoken text
   let normalized = normalizeSpokenText(text);
-  console.log('[ScriptureDetector] Normalized:', normalized);
 
   // Resolve relative references if we have context
   if (context) {
     normalized = resolveRelativeReferences(normalized, context);
-    console.log('[ScriptureDetector] After context resolution:', normalized);
   }
 
   // Use regex detection (most reliable)
-  const results = detectWithRegex(normalized);
-  console.log('[ScriptureDetector] Found:', results);
-
-  return results;
+  return detectWithRegex(normalized);
 }
 
 /**

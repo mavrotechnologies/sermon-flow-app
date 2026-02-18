@@ -33,6 +33,7 @@ export class DeepgramService {
   private isRunning = false;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
+  private isStopped = false;
 
   constructor(config: DeepgramConfig) {
     this.config = config;
@@ -46,7 +47,7 @@ export class DeepgramService {
   }
 
   async start(): Promise<void> {
-    if (this.isRunning) return;
+    if (this.isRunning || this.isStopped) return;
 
     try {
       // Get microphone access first
@@ -150,12 +151,20 @@ export class DeepgramService {
         this.isRunning = false;
         console.log(`[Deepgram] WebSocket closed: code=${event.code} reason="${event.reason}"`);
 
+        // If stop() was called, don't reconnect or fire onEnd again (stop() already fired it)
+        if (this.isStopped) {
+          this.cleanup();
+          return;
+        }
+
         if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
           const attempt = this.reconnectAttempts;
           console.log(`[Deepgram] Reconnecting (${attempt}/${this.maxReconnectAttempts})...`);
           this.cleanup();
-          setTimeout(() => this.start(), 1000);
+          setTimeout(() => {
+            if (!this.isStopped) this.start();
+          }, 1000);
           return;
         } else if (event.code !== 1000) {
           this.config.onError('Connection error - check your internet');
@@ -249,6 +258,7 @@ export class DeepgramService {
   }
 
   stop(): void {
+    this.isStopped = true; // Prevent reconnection and double onEnd
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       // Send close message to Deepgram
       this.ws.send(JSON.stringify({ type: 'CloseStream' }));
