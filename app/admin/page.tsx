@@ -449,7 +449,7 @@ export default function AdminPage() {
                   <div className="flex items-center gap-2 px-3 py-1.5 bg-orange-500/10 border border-orange-500/20 rounded-full">
                     <span className="w-2 h-2 bg-orange-400 rounded-full animate-pulse" />
                     <span className="text-orange-400 text-xs font-medium truncate max-w-[200px]">
-                      Previewing: {vmixOverlayState.currentReference}
+                      On Screen: {vmixOverlayState.currentReference}
                     </span>
                     <button
                       onClick={() => vmixHideOverlay()}
@@ -880,7 +880,7 @@ export default function AdminPage() {
                                 ? 'bg-green-500/20 text-green-400'
                                 : 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'
                             }`}
-                            title="Preview on display"
+                            title="Present on display"
                           >
                             {presentedId === scripture.id ? (
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -888,11 +888,10 @@ export default function AdminPage() {
                               </svg>
                             ) : (
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                               </svg>
                             )}
-                            {presentedId === scripture.id ? 'Sent' : 'Preview'}
+                            {presentedId === scripture.id ? 'Sent' : 'Present'}
                           </button>
                         );
                       } : undefined}
@@ -966,7 +965,11 @@ export default function AdminPage() {
                                   onClick={async () => {
                                     const ref = `${scripture.book} ${scripture.chapter}:${scripture.verseStart}${scripture.verseEnd && scripture.verseEnd !== scripture.verseStart ? `-${scripture.verseEnd}` : ''}`;
                                     const verseText = scripture.verses.map(v => v.text).join(' ');
-                                    const ok = await vmixPresentScripture(ref, verseText, translation);
+                                    const verses = scripture.verses.map((v, i) => ({
+                                      number: scripture.verseStart + i,
+                                      text: v.text,
+                                    }));
+                                    const ok = await vmixPresentScripture(ref, verseText, translation, verses);
                                     if (ok) {
                                       setPresentedId(scripture.id);
                                       setTimeout(() => setPresentedId(null), 2000);
@@ -977,7 +980,7 @@ export default function AdminPage() {
                                       ? 'bg-green-500/20 text-green-400'
                                       : 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'
                                   }`}
-                                  title="Preview on display"
+                                  title="Present on display"
                                 >
                                   {presentedId === scripture.id ? (
                                     <>
@@ -989,10 +992,9 @@ export default function AdminPage() {
                                   ) : (
                                     <>
                                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                       </svg>
-                                      Preview
+                                      Present
                                     </>
                                   )}
                                 </button>
@@ -1000,8 +1002,12 @@ export default function AdminPage() {
                               <button
                                 onClick={() => {
                                   const ref = `${scripture.book} ${scripture.chapter}:${scripture.verseStart}${scripture.verseEnd && scripture.verseEnd !== scripture.verseStart ? `-${scripture.verseEnd}` : ''}`;
-                                  const verseText = scripture.verses.map(v => v.text).join(' ');
-                                  const copyText = `${ref} (${scripture.verses[0]?.translation || translation})\n${verseText}`;
+                                  const trans = scripture.verses[0]?.translation || translation;
+                                  const copyLines = scripture.verses.map((v, i) => {
+                                    const vNum = scripture.verseStart + i;
+                                    return `${vNum} ${v.text}`;
+                                  });
+                                  const copyText = `${ref} (${trans})\n${copyLines.join('\n')}`;
                                   navigator.clipboard.writeText(copyText);
                                   setCopiedId(scripture.id);
                                   setTimeout(() => setCopiedId(null), 2000);

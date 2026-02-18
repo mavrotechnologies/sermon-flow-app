@@ -78,6 +78,7 @@ export interface VmixCommandPayload {
   reference?: string;
   verseText?: string;
   version?: string;
+  verses?: { number: number; text: string }[];
 }
 
 export interface BroadcastMessage {

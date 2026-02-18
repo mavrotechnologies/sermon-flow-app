@@ -3,18 +3,30 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
+interface VerseItem {
+  number: number;
+  text: string;
+}
+
 interface ScriptureDisplay {
   reference: string;
   verseText: string;
   version?: string;
+  verses?: VerseItem[];
 }
+
+// Fixed channel — matches useVmixSettings DISPLAY_CHANNEL
+const DISPLAY_CHANNEL = 'display';
 
 function DisplayContent() {
   const searchParams = useSearchParams();
-  const roomCode = searchParams.get('room');
+  const roomParam = searchParams.get('room');
+  // Use room param if provided, otherwise use the fixed display channel
+  const roomCode = roomParam || DISPLAY_CHANNEL;
+
   const [scripture, setScripture] = useState<ScriptureDisplay | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const verseRef = useRef<HTMLParagraphElement>(null);
+  const verseRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Auto text sizing — binary search for the largest font that fits
@@ -39,7 +51,7 @@ function DisplayContent() {
     };
 
     const MIN = 36;
-    const MAX = Math.round(window.innerWidth * 0.08); // 8vw — ~154px on 1920
+    const MAX = Math.round(window.innerWidth * 0.08); // 8vw
 
     // Binary search: find largest size that fits
     let lo = MIN;
@@ -62,7 +74,7 @@ function DisplayContent() {
 
   useEffect(() => {
     if (scripture) {
-      // Wait for render then auto-size
+      // Instant — no delay, just measure after paint
       requestAnimationFrame(() => {
         requestAnimationFrame(autoSize);
       });
@@ -92,7 +104,6 @@ function DisplayContent() {
         reconnectTimer = setTimeout(connect, 3000);
       };
 
-      // Listen for vmix commands
       eventSource.addEventListener('vmix', (event) => {
         try {
           const msg = JSON.parse(event.data);
@@ -102,6 +113,7 @@ function DisplayContent() {
               reference: payload.reference || '',
               verseText: payload.verseText || '',
               version: payload.version,
+              verses: payload.verses,
             });
           } else if (payload?.action === 'hide') {
             setScripture(null);
@@ -109,7 +121,6 @@ function DisplayContent() {
         } catch {}
       });
 
-      // Listen for clear event (also hides display)
       eventSource.addEventListener('clear', () => {
         setScripture(null);
       });
@@ -123,24 +134,6 @@ function DisplayContent() {
     };
   }, [roomCode]);
 
-  if (!roomCode) {
-    return (
-      <div style={{
-        width: '100vw',
-        height: '100vh',
-        background: '#0a1628',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#666',
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-        fontSize: '1.5rem',
-      }}>
-        Missing ?room= parameter
-      </div>
-    );
-  }
-
   return (
     <div
       style={{
@@ -148,19 +141,10 @@ function DisplayContent() {
         height: '100vh',
         overflow: 'hidden',
         position: 'relative',
-        background: '#000000',
+        background: '#0a1628',
       }}
     >
-      {/* Background — solid dark like BibleShow */}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: '#0a1628',
-        }}
-      />
-
-      {/* Connection indicator (tiny, bottom-left — only for debugging) */}
+      {/* Connection indicator */}
       <div
         style={{
           position: 'absolute',
@@ -175,7 +159,7 @@ function DisplayContent() {
         }}
       />
 
-      {/* Scripture content — BibleShow layout */}
+      {/* Scripture content — instant, no transitions */}
       {scripture && (
         <div
           ref={containerRef}
@@ -186,12 +170,12 @@ function DisplayContent() {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '2% 3%',
+            padding: '10px 20px',
             zIndex: 5,
           }}
         >
-          {/* Verse text — bold, dominant, fills the screen */}
-          <p
+          {/* Verse text — bold, fills the screen */}
+          <div
             ref={verseRef}
             style={{
               fontFamily: "'Inter', sans-serif",
@@ -205,25 +189,47 @@ function DisplayContent() {
               textShadow: '2px 2px 6px rgba(0,0,0,0.7)',
             }}
           >
-            {scripture.verseText}
-          </p>
+            {scripture.verses && scripture.verses.length > 1 ? (
+              // Multiple verses — show each with superscript number
+              scripture.verses.map((v, i) => (
+                <span key={i}>
+                  <sup
+                    style={{
+                      fontSize: '0.5em',
+                      fontWeight: 700,
+                      color: '#d4a843',
+                      verticalAlign: 'super',
+                      marginRight: '0.1em',
+                      lineHeight: 1,
+                    }}
+                  >
+                    {v.number}
+                  </sup>
+                  {v.text}
+                  {i < scripture.verses!.length - 1 ? ' ' : ''}
+                </span>
+              ))
+            ) : (
+              // Single verse — just the text
+              scripture.verseText
+            )}
+          </div>
 
-          {/* Reference + version — below verse text */}
+          {/* Reference + version — same font size */}
           <div
             style={{
               marginTop: '1.5%',
               display: 'flex',
               alignItems: 'baseline',
-              gap: '0.4em',
+              gap: '0.3em',
             }}
           >
             <span
               style={{
                 fontFamily: "'Inter', sans-serif",
-                fontSize: '3.5vw',
+                fontSize: '3.2vw',
                 fontWeight: 700,
                 color: '#d4a843',
-                letterSpacing: '0.02em',
                 textShadow: '2px 2px 6px rgba(0,0,0,0.7)',
               }}
             >
@@ -233,10 +239,9 @@ function DisplayContent() {
               <span
                 style={{
                   fontFamily: "'Inter', sans-serif",
-                  fontSize: '2.2vw',
+                  fontSize: '3.2vw',
                   fontWeight: 700,
                   color: '#8a9ab5',
-                  letterSpacing: '0.05em',
                   textShadow: '1px 1px 4px rgba(0,0,0,0.6)',
                 }}
               >

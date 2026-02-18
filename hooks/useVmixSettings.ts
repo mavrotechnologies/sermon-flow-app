@@ -21,6 +21,9 @@ const INITIAL_OVERLAY: VmixOverlayState = {
   showingSince: null,
 };
 
+// Fixed channel so /display works without a room code
+const DISPLAY_CHANNEL = 'display';
+
 function loadSettings(): VmixSettings {
   if (typeof window === 'undefined') return DEFAULT_SETTINGS;
   try {
@@ -60,16 +63,27 @@ export function useVmixSettings({ roomCode, broadcastVmix }: UseVmixSettingsOpti
   }, []);
 
   const presentScripture = useCallback(
-    async (reference: string, verseText: string, version?: string): Promise<boolean> => {
+    async (
+      reference: string,
+      verseText: string,
+      version?: string,
+      verses?: { number: number; text: string }[]
+    ): Promise<boolean> => {
       if (!settings.enabled) return false;
 
       // If something is already showing, hide first
       if (overlayRef.current.isShowing) {
-        broadcastVmix(roomCode, { action: 'hide' });
+        const hidePayload: VmixCommandPayload = { action: 'hide' };
+        broadcastVmix(roomCode, hidePayload);
+        broadcastVmix(DISPLAY_CHANNEL, hidePayload);
         await new Promise((r) => setTimeout(r, 100));
       }
 
-      broadcastVmix(roomCode, { action: 'present', reference, verseText, version });
+      const payload: VmixCommandPayload = { action: 'present', reference, verseText, version, verses };
+      // Broadcast to both the room and the fixed display channel
+      broadcastVmix(roomCode, payload);
+      broadcastVmix(DISPLAY_CHANNEL, payload);
+
       setOverlayState({
         isShowing: true,
         currentReference: reference,
@@ -83,14 +97,17 @@ export function useVmixSettings({ roomCode, broadcastVmix }: UseVmixSettingsOpti
 
   const hideOverlay = useCallback(async (): Promise<boolean> => {
     if (!settings.enabled) return false;
-    broadcastVmix(roomCode, { action: 'hide' });
+    const payload: VmixCommandPayload = { action: 'hide' };
+    broadcastVmix(roomCode, payload);
+    broadcastVmix(DISPLAY_CHANNEL, payload);
     setOverlayState(INITIAL_OVERLAY);
     return true;
   }, [settings.enabled, roomCode, broadcastVmix]);
 
+  // Static URL — no room code needed
   const displayUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/display?room=${roomCode}`
-    : `/display?room=${roomCode}`;
+    ? `${window.location.origin}/display`
+    : '/display';
 
   return {
     settings,
