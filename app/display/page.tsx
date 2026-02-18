@@ -39,7 +39,7 @@ function DisplayContent() {
     };
 
     const MIN = 36;
-    const MAX = Math.round(window.innerWidth * 0.05); // 5vw — ~96px on 1920
+    const MAX = Math.round(window.innerWidth * 0.08); // 8vw — ~154px on 1920
 
     // Binary search: find largest size that fits
     let lo = MIN;
@@ -186,7 +186,7 @@ function DisplayContent() {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '4% 5%',
+            padding: '2% 3%',
             zIndex: 5,
           }}
         >
@@ -194,13 +194,13 @@ function DisplayContent() {
           <p
             ref={verseRef}
             style={{
-              fontFamily: "'Georgia', 'Times New Roman', 'Palatino Linotype', serif",
-              fontSize: '5vw',
+              fontFamily: "'Inter', sans-serif",
+              fontSize: '8vw',
               fontWeight: 700,
               color: '#ffffff',
               textAlign: 'center',
-              lineHeight: 1.35,
-              maxWidth: '94%',
+              lineHeight: 1.3,
+              maxWidth: '96%',
               margin: 0,
               textShadow: '2px 2px 6px rgba(0,0,0,0.7)',
             }}
@@ -211,7 +211,7 @@ function DisplayContent() {
           {/* Reference + version — below verse text */}
           <div
             style={{
-              marginTop: '3%',
+              marginTop: '1.5%',
               display: 'flex',
               alignItems: 'baseline',
               gap: '0.4em',
@@ -219,7 +219,7 @@ function DisplayContent() {
           >
             <span
               style={{
-                fontFamily: "'Georgia', 'Times New Roman', serif",
+                fontFamily: "'Inter', sans-serif",
                 fontSize: '3.5vw',
                 fontWeight: 700,
                 color: '#d4a843',
@@ -232,9 +232,9 @@ function DisplayContent() {
             {scripture.version && (
               <span
                 style={{
-                  fontFamily: "'Georgia', 'Times New Roman', serif",
+                  fontFamily: "'Inter', sans-serif",
                   fontSize: '2.2vw',
-                  fontWeight: 400,
+                  fontWeight: 700,
                   color: '#8a9ab5',
                   letterSpacing: '0.05em',
                   textShadow: '1px 1px 4px rgba(0,0,0,0.6)',
