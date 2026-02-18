@@ -974,13 +974,18 @@ export default function AdminPage() {
                           </div>
                         </div>
 
-                        {/* Verse text */}
+                        {/* Verse text — BibleGateway style with inline verse numbers */}
                         <div className="px-5 pb-4">
-                          {scripture.verses.map((verse, i) => (
-                            <p key={i} className="text-gray-300 text-sm leading-relaxed">
-                              {verse.text}
-                            </p>
-                          ))}
+                          <p className="text-gray-300 text-sm leading-relaxed">
+                            {scripture.verses.map((verse, i) => (
+                              <span key={i}>
+                                {scripture.verses.length > 1 && (
+                                  <sup className="text-purple-400 font-bold text-[10px] mr-0.5">{scripture.verseStart + i}</sup>
+                                )}
+                                {verse.text}{i < scripture.verses.length - 1 ? ' ' : ''}
+                              </span>
+                            ))}
+                          </p>
                           <div className="mt-3 flex items-center justify-between">
                             <span className="text-xs text-gray-500">{scripture.verses[0]?.translation || translation} Translation</span>
                             <div className="flex items-center gap-2">
@@ -1029,11 +1034,11 @@ export default function AdminPage() {
                                     // Single verse — no verse number
                                     bodyText = scripture.verses[0].text;
                                   } else {
-                                    // Multiple verses — each on its own line with number
+                                    // Multiple verses — inline with superscript-style numbers (BibleGateway style)
                                     bodyText = scripture.verses.map((v, i) => {
                                       const vNum = scripture.verseStart + i;
                                       return `${vNum} ${v.text}`;
-                                    }).join('\n\n');
+                                    }).join(' ');
                                   }
                                   const copyText = `${ref} (${trans})\n${bodyText}`;
                                   navigator.clipboard.writeText(copyText);
