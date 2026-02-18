@@ -1033,7 +1033,7 @@ export default function AdminPage() {
                                     bodyText = scripture.verses.map((v, i) => {
                                       const vNum = scripture.verseStart + i;
                                       return `${vNum} ${v.text}`;
-                                    }).join('\n');
+                                    }).join('\n\n');
                                   }
                                   const copyText = `${ref} (${trans})\n${bodyText}`;
                                   navigator.clipboard.writeText(copyText);
