@@ -170,14 +170,14 @@ function DisplayContent() {
             ref={verseRef}
             style={{
               fontFamily: "'Georgia', 'Times New Roman', 'Palatino Linotype', serif",
-              fontSize: 'clamp(3rem, 6.5vw, 6rem)',
+              fontSize: '8vw',
               fontWeight: 400,
               color: '#ffffff',
               textAlign: 'center',
-              lineHeight: 1.5,
-              maxWidth: '88vw',
+              lineHeight: 1.45,
+              maxWidth: '92vw',
               margin: 0,
-              textShadow: '0 2px 30px rgba(0,0,0,0.7)',
+              textShadow: '0 3px 30px rgba(0,0,0,0.8)',
               wordSpacing: '0.05em',
             }}
           >
@@ -196,7 +196,7 @@ function DisplayContent() {
             <span
               style={{
                 fontFamily: "'Georgia', 'Times New Roman', serif",
-                fontSize: 'clamp(1.8rem, 3.5vw, 3rem)',
+                fontSize: '4.5vw',
                 fontWeight: 700,
                 color: '#d4a843',
                 letterSpacing: '0.02em',
@@ -209,7 +209,7 @@ function DisplayContent() {
               <span
                 style={{
                   fontFamily: "'Georgia', 'Times New Roman', serif",
-                  fontSize: 'clamp(1.2rem, 2.2vw, 2rem)',
+                  fontSize: '3vw',
                   fontWeight: 400,
                   color: '#8a9ab5',
                   letterSpacing: '0.05em',
