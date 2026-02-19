@@ -34,6 +34,7 @@ export default function AdminPage() {
   const [roomCodeCopied, setRoomCodeCopied] = useState(false);
   const [showVmixSettings, setShowVmixSettings] = useState(false);
   const [presentedId, setPresentedId] = useState<string | null>(null);
+  const versesScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -136,24 +137,28 @@ export default function AdminPage() {
   const detectedScripturesRef = useRef(detectedScriptures);
   detectedScripturesRef.current = detectedScriptures;
 
-  // Track which GPT scriptures have been synced to explicit references
-  const syncedGPTScripturesRef = useRef<Set<string>>(new Set());
+  // Track which scriptures have been synced to the Scripture tab
+  const syncedScripturesRef = useRef<Set<string>>(new Set());
 
-  // Sync GPT detected scriptures to Explicit References
+  // Sync streaming detections to Scripture tab (fast regex-based path — no false positives)
   useEffect(() => {
-    for (const gptScripture of gptScriptures) {
-      const key = `${gptScripture.book}-${gptScripture.chapter}-${gptScripture.verse}`;
-      if (!syncedGPTScripturesRef.current.has(key)) {
-        syncedGPTScripturesRef.current.add(key);
+    for (const streaming of streamingScriptures) {
+      const key = `${streaming.book}-${streaming.chapter}-${streaming.verse}`;
+      if (!syncedScripturesRef.current.has(key)) {
+        syncedScripturesRef.current.add(key);
         addScriptureByRef(
-          gptScripture.book,
-          gptScripture.chapter,
-          gptScripture.verse,
-          gptScripture.verseEnd
+          streaming.book,
+          streaming.chapter,
+          streaming.verse,
+          streaming.verseEnd
         );
       }
     }
-  }, [gptScriptures, addScriptureByRef]);
+  }, [streamingScriptures, addScriptureByRef]);
+
+  // NOTE: GPT and enhanced detections are NOT auto-synced — they stay in the AI tab
+  // to avoid random/paraphrased scriptures polluting the Scripture tab.
+  // User can click a GPT detection to manually add it to the Scripture tab.
 
   // Sync detected scriptures to notes hook for context
   useEffect(() => {
@@ -192,9 +197,10 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (detectedScriptures.length > prevBroadcastedRef.current) {
-      const newScriptures = detectedScriptures.slice(prevBroadcastedRef.current);
-      for (const scripture of newScriptures) {
-        broadcastScripture(roomCode, scripture);
+      // New items are prepended — broadcast from index 0 to (newCount - prevCount)
+      const newCount = detectedScriptures.length - prevBroadcastedRef.current;
+      for (let i = 0; i < newCount; i++) {
+        broadcastScripture(roomCode, detectedScriptures[i]);
       }
       prevBroadcastedRef.current = detectedScriptures.length;
     }
@@ -202,9 +208,9 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (enhancedScriptures.length > prevEnhancedBroadcastedRef.current) {
-      const newScriptures = enhancedScriptures.slice(prevEnhancedBroadcastedRef.current);
-      for (const scripture of newScriptures) {
-        broadcastScripture(roomCode, enhancedToDetected(scripture));
+      const newCount = enhancedScriptures.length - prevEnhancedBroadcastedRef.current;
+      for (let i = 0; i < newCount; i++) {
+        broadcastScripture(roomCode, enhancedToDetected(enhancedScriptures[i]));
       }
       prevEnhancedBroadcastedRef.current = enhancedScriptures.length;
     }
@@ -212,9 +218,9 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (streamingScriptures.length > prevStreamingBroadcastedRef.current) {
-      const newScriptures = streamingScriptures.slice(prevStreamingBroadcastedRef.current);
-      for (const scripture of newScriptures) {
-        broadcastScripture(roomCode, streamingToDetected(scripture));
+      const newCount = streamingScriptures.length - prevStreamingBroadcastedRef.current;
+      for (let i = 0; i < newCount; i++) {
+        broadcastScripture(roomCode, streamingToDetected(streamingScriptures[i]));
       }
       prevStreamingBroadcastedRef.current = streamingScriptures.length;
     }
@@ -229,29 +235,25 @@ export default function AdminPage() {
     [processInterim]
   );
 
-  // Handle final transcript
+  // Handle final transcript — fire-and-forget detection so transcription is never blocked
   const handleTranscript = useCallback(
-    async (segment: TranscriptSegment) => {
+    (segment: TranscriptSegment) => {
       // Broadcast transcript to live page
       broadcastTranscript(roomCode, segment);
 
       // Feed text to sermon notes generator
       addNotesText(segment.text);
 
-      // Process final text through streaming detection
-      await processFinal(segment.text);
-
-      // Run enhanced pipeline (includes regex, cache, semantic, context)
-      const pipelineResult = await processEnhancedSegment(segment);
-
-      // Also run legacy regex detection for compatibility
-      await processSegment(segment);
-
-      // Only call GPT when the pipeline recommends it (ambiguous/paraphrase cases)
-      if (pipelineResult.shouldCallGPT) {
-        recentTextRef.current = (recentTextRef.current + ' ' + segment.text).slice(-600);
-        detectWithGPT(recentTextRef.current, segment.isFinal);
-      }
+      // Fire all detection systems in parallel — don't await (never block transcription)
+      processFinal(segment.text);
+      processSegment(segment);
+      processEnhancedSegment(segment).then((pipelineResult) => {
+        // Only call GPT when the pipeline recommends it (ambiguous/paraphrase cases)
+        if (pipelineResult.shouldCallGPT) {
+          recentTextRef.current = (recentTextRef.current + ' ' + segment.text).slice(-600);
+          detectWithGPT(recentTextRef.current, segment.isFinal);
+        }
+      });
     },
     [roomCode, broadcastTranscript, addNotesText, processFinal, processEnhancedSegment, processSegment, detectWithGPT]
   );
@@ -311,7 +313,7 @@ export default function AdminPage() {
     clearStreamingScriptures();
     clearSermonNotes();
     recentTextRef.current = '';
-    syncedGPTScripturesRef.current.clear();
+    syncedScripturesRef.current.clear();
     prevBroadcastedRef.current = 0;
     prevEnhancedBroadcastedRef.current = 0;
     prevStreamingBroadcastedRef.current = 0;
@@ -332,6 +334,18 @@ export default function AdminPage() {
       setTimeout(() => setHighlightedScriptureId(null), 3000);
     }
   }, [detectedScriptures]);
+
+  // Scroll to highlighted scripture card when it changes
+  useEffect(() => {
+    if (!highlightedScriptureId) return;
+    // Wait a tick for React to render the card (especially after tab switch)
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-scripture-id="${highlightedScriptureId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+  }, [highlightedScriptureId]);
 
   // Warn before leaving when recording or transcript exists
   useEffect(() => {
@@ -857,7 +871,7 @@ export default function AdminPage() {
               </div>
 
               {/* Tab Content */}
-              <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col">
+              <div ref={versesScrollRef} className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col">
                 {activeTab === 'ai' ? (
                   <div className="flex-1 flex flex-col">
                     <GPTScriptureList
@@ -865,49 +879,18 @@ export default function AdminPage() {
                       isDetecting={isDetecting}
                       error={gptError}
                       onSelect={async (scripture) => {
-                        await addScriptureByRef(
+                        const newId = await addScriptureByRef(
                           scripture.book,
                           scripture.chapter,
                           scripture.verse,
                           scripture.verseEnd
                         );
                         setActiveTab('verses');
+                        if (newId) {
+                          setHighlightedScriptureId(newId);
+                          setTimeout(() => setHighlightedScriptureId(null), 3000);
+                        }
                       }}
-                      renderActions={vmixSettings.enabled ? (scripture) => {
-                        const ref = scripture.verseEnd
-                          ? `${scripture.book} ${scripture.chapter}:${scripture.verse}-${scripture.verseEnd}`
-                          : `${scripture.book} ${scripture.chapter}:${scripture.verse}`;
-                        const verseText = scripture.text || scripture.reason;
-                        return (
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              const ok = await vmixPresentScripture(ref, verseText, translation);
-                              if (ok) {
-                                setPresentedId(scripture.id);
-                                setTimeout(() => setPresentedId(null), 2000);
-                              }
-                            }}
-                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                              presentedId === scripture.id
-                                ? 'bg-green-500/20 text-green-400'
-                                : 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'
-                            }`}
-                            title="Present on display"
-                          >
-                            {presentedId === scripture.id ? (
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                            ) : (
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                              </svg>
-                            )}
-                            {presentedId === scripture.id ? 'Sent' : 'Present'}
-                          </button>
-                        );
-                      } : undefined}
                     />
                   </div>
                 ) : detectedScriptures.length === 0 ? (
@@ -925,9 +908,10 @@ export default function AdminPage() {
                     {detectedScriptures.map((scripture) => (
                       <div
                         key={scripture.id}
+                        data-scripture-id={scripture.id}
                         className={`rounded-xl bg-white/5 border border-white/5 border-l-4 transition-all ${
                           highlightedScriptureId === scripture.id
-                            ? 'border-l-yellow-500 bg-yellow-500/10'
+                            ? 'border-l-yellow-500 bg-yellow-500/10 ring-1 ring-yellow-500/30'
                             : 'border-l-purple-500'
                         }`}
                       >
@@ -939,17 +923,7 @@ export default function AdminPage() {
                           </div>
                           <div className="flex items-center gap-0.5 bg-white/5 rounded-lg p-0.5">
                             <button
-                              onClick={async () => {
-                                await navigateVerse(scripture.id, 'prev');
-                                // If this scripture is on screen, re-present after nav
-                                if (presentedId === scripture.id && vmixSettings.enabled) {
-                                  const s = detectedScripturesRef.current.find(ds => ds.id === scripture.id);
-                                  if (s) {
-                                    const ref = `${s.book} ${s.chapter}:${s.verseStart}`;
-                                    vmixPresentScripture(ref, s.verses[0]?.text || '', translation);
-                                  }
-                                }
-                              }}
+                              onClick={() => navigateVerse(scripture.id, 'prev')}
                               disabled={scripture.verseStart <= 1}
                               className="p-2 rounded-md hover:bg-white/10 active:bg-white/20 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
                               title="Previous verse"
@@ -962,17 +936,7 @@ export default function AdminPage() {
                               :{scripture.verseStart}
                             </span>
                             <button
-                              onClick={async () => {
-                                await navigateVerse(scripture.id, 'next');
-                                // If this scripture is on screen, re-present after nav
-                                if (presentedId === scripture.id && vmixSettings.enabled) {
-                                  const s = detectedScripturesRef.current.find(ds => ds.id === scripture.id);
-                                  if (s) {
-                                    const ref = `${s.book} ${s.chapter}:${s.verseStart}`;
-                                    vmixPresentScripture(ref, s.verses[0]?.text || '', translation);
-                                  }
-                                }
-                              }}
+                              onClick={() => navigateVerse(scripture.id, 'next')}
                               className="p-2 rounded-md hover:bg-white/10 active:bg-white/20 transition-all"
                               title="Next verse"
                             >
@@ -998,42 +962,6 @@ export default function AdminPage() {
                           <div className="mt-3 flex items-center justify-between">
                             <span className="text-xs text-gray-500">{scripture.verses[0]?.translation || translation} Translation</span>
                             <div className="flex items-center gap-2">
-                              {vmixSettings.enabled && (
-                                <button
-                                  onClick={async () => {
-                                    // Present ONE verse at a time (current verseStart)
-                                    const ref = `${scripture.book} ${scripture.chapter}:${scripture.verseStart}`;
-                                    const verseText = scripture.verses[0]?.text || '';
-                                    const ok = await vmixPresentScripture(ref, verseText, translation);
-                                    if (ok) {
-                                      setPresentedId(scripture.id);
-                                      setTimeout(() => setPresentedId(null), 2000);
-                                    }
-                                  }}
-                                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all text-xs font-medium ${
-                                    presentedId === scripture.id
-                                      ? 'bg-green-500/20 text-green-400'
-                                      : 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'
-                                  }`}
-                                  title="Present on display"
-                                >
-                                  {presentedId === scripture.id ? (
-                                    <>
-                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                      </svg>
-                                      Sent
-                                    </>
-                                  ) : (
-                                    <>
-                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                      </svg>
-                                      Present
-                                    </>
-                                  )}
-                                </button>
-                              )}
                               <button
                                 onClick={() => {
                                   const ref = `${scripture.book} ${scripture.chapter}:${scripture.verseStart}${scripture.verseEnd && scripture.verseEnd !== scripture.verseStart ? `-${scripture.verseEnd}` : ''}`;

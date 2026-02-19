@@ -251,7 +251,7 @@ export function useStreamingScriptureDetection(
                   latenciesRef.current.reduce((a, b) => a + b, 0) / latenciesRef.current.length
                 );
 
-                // Add to scriptures
+                // Prepend to scriptures (stack order - newest on top)
                 setStreamingScriptures(prev => [scripture, ...prev]);
                 setPendingReference(null);
 

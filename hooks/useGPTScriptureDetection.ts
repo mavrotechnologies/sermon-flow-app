@@ -71,8 +71,8 @@ export function useGPTScriptureDetection(): UseGPTScriptureDetectionResult {
       pendingRequestRef.current.abort();
     }
 
-    // Faster debounce - 800ms for real-time feel
-    const debounceTime = immediate ? 0 : 800;
+    // Fast debounce - 300ms for real-time feel
+    const debounceTime = immediate ? 0 : 300;
 
     debounceRef.current = setTimeout(async () => {
       setIsDetecting(true);
@@ -110,7 +110,7 @@ export function useGPTScriptureDetection(): UseGPTScriptureDetectionResult {
             );
 
             if (existingIndex === -1) {
-              // Add new scripture
+              // Prepend new scripture (stack order - newest on top)
               newScriptures.unshift({
                 ...scripture,
                 id: generateId(),

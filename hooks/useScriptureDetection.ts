@@ -3,12 +3,13 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { detectScriptures, initializeParser, formatReference } from '@/lib/scriptureDetector';
 import { lookupVerses } from '@/lib/verseLookup';
+import { normalizeSpokenText } from '@/lib/normalizeSpoken';
 import type { TranscriptSegment, DetectedScripture, ScriptureReference, BibleTranslation, BibleVerse } from '@/types';
 
 interface UseScriptureDetectionResult {
   detectedScriptures: DetectedScripture[];
   processSegment: (segment: TranscriptSegment) => Promise<DetectedScripture[]>;
-  addScriptureByRef: (book: string, chapter: number, verse: number, verseEnd?: number) => Promise<void>;
+  addScriptureByRef: (book: string, chapter: number, verse: number, verseEnd?: number) => Promise<string | null>;
   navigateVerse: (scriptureId: string, direction: 'prev' | 'next') => Promise<void>;
   clearScriptures: () => void;
   isProcessing: boolean;
@@ -87,8 +88,21 @@ export function useScriptureDetection(
       const newScriptures: DetectedScripture[] = [];
 
       try {
-        // Detect scripture references in the text
-        const refs = detectScriptures(segment.text);
+        // Normalize spoken text first ("chapter four verse three" → "4:3")
+        const normalizedText = normalizeSpokenText(segment.text);
+        // Detect scripture references in both raw and normalized text
+        const rawRefs = detectScriptures(segment.text);
+        const normalizedRefs = detectScriptures(normalizedText);
+        // Merge and deduplicate
+        const seenKeys = new Set<string>();
+        const refs: ScriptureReference[] = [];
+        for (const ref of [...rawRefs, ...normalizedRefs]) {
+          const key = `${ref.book}-${ref.chapter}-${ref.verseStart}`;
+          if (!seenKeys.has(key)) {
+            seenKeys.add(key);
+            refs.push(ref);
+          }
+        }
 
         for (const ref of refs) {
           const refKey = getRefKey(ref);
@@ -113,7 +127,7 @@ export function useScriptureDetection(
         }
 
         if (newScriptures.length > 0) {
-          // Add new scriptures at the beginning (stack order - newest first)
+          // Prepend new scriptures (stack order - newest/current always on top)
           setDetectedScriptures((prev) => [...newScriptures, ...prev]);
         }
       } catch (error) {
@@ -169,11 +183,16 @@ export function useScriptureDetection(
    * Add a scripture by reference (from GPT detection)
    */
   const addScriptureByRef = useCallback(
-    async (book: string, chapter: number, verse: number, verseEnd?: number): Promise<void> => {
+    async (book: string, chapter: number, verse: number, verseEnd?: number): Promise<string | null> => {
       const refKey = `${book}-${chapter}-${verse}-${verseEnd || verse}`;
 
-      // Skip if already processed
-      if (processedRefs.current.has(refKey)) return;
+      // Skip if already processed — return existing ID for scroll-to
+      if (processedRefs.current.has(refKey)) {
+        const existing = scripturesRef.current.find(
+          s => s.book === book && s.chapter === chapter && s.verseStart === verse
+        );
+        return existing?.id || null;
+      }
       processedRefs.current.add(refKey);
 
       try {
@@ -196,14 +215,17 @@ export function useScriptureDetection(
           timestamp: Date.now(),
         };
 
-        // Add at the beginning (stack order - newest first)
+        // Prepend (stack order - newest/current always on top)
         setDetectedScriptures((prev) => [detectedScripture, ...prev]);
         onScriptureDetected?.(detectedScripture);
 
         // Prefetch adjacent verses for fast navigation
         prefetchAdjacent(book, chapter, verse);
+
+        return ref.id;
       } catch (error) {
         console.error('Error adding scripture by ref:', error);
+        return null;
       }
     },
     [translation, onScriptureDetected, prefetchAdjacent]
