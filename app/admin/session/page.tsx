@@ -10,6 +10,7 @@ import { useGPTScriptureDetection } from '@/hooks/useGPTScriptureDetection';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ScriptureHighlight } from '@/components/ScriptureHighlight';
 import { Logo } from '@/components/ui/Logo';
+import { Select, type SelectOption } from '@/components/ui/Select';
 import { SoundWave } from '@/components/ui/SoundWave';
 import {
   AlertIcon,
@@ -34,11 +35,22 @@ const HIGHLIGHT_DURATION_MS = 3000;
 /** How long the copy button reads "Copied". */
 const COPIED_DURATION_MS = 2000;
 
+/** Stands in for a verse id in `copiedId` while the transcript's own copy button reads "Copied". */
+const TRANSCRIPT_COPY_ID = 'transcript';
+
 /** Roughly how much text goes into one transcript paragraph before the next starts. */
 const PARAGRAPH_CHARS = 500;
 
 /** How close to the end of the transcript, in px, still counts as following along. */
 const FOLLOW_THRESHOLD_PX = 80;
+
+/** The translation menu: code and full name, free translations listed first. */
+const TRANSLATION_OPTIONS: SelectOption<BibleTranslation>[] = TRANSLATIONS.map((t) => ({
+  value: t.code,
+  label: t.code,
+  description: t.fullName,
+  group: t.isPublicDomain ? 'Public domain' : 'Premium',
+}));
 
 /** Stable empty array, so segments without references don't re-render on identity change. */
 const EMPTY_REFS: ScriptureReference[] = [];
@@ -287,6 +299,14 @@ export default function AdminPage() {
     [translation]
   );
 
+  // The whole transcript, in the same paragraphs as on screen, a blank line between each.
+  const handleCopyTranscript = useCallback(() => {
+    const text = paragraphs.map((para) => para.segments.map((seg) => seg.text.trim()).join(' ')).join('\n\n');
+    navigator.clipboard.writeText(text);
+    setCopiedId(TRANSCRIPT_COPY_ID);
+    setTimeout(() => setCopiedId(null), COPIED_DURATION_MS);
+  }, [paragraphs]);
+
   // Warn before leaving when recording or transcript exists
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -397,9 +417,9 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Control bar */}
+        {/* Control bar — raised over the panels below, which would otherwise paint across an open menu */}
         <div
-          className={`animate-fade-in-up rounded-card border bg-paper p-3.5 transition-all duration-500 md:p-4 ${
+          className={`animate-fade-in-up relative z-30 rounded-card border bg-paper p-3.5 transition-all duration-500 md:p-4 ${
             isRecording ? 'border-amber/40 shadow-[0_0_0_4px_rgba(200,132,42,0.10)]' : 'border-line shadow-soft'
           }`}
         >
@@ -439,23 +459,19 @@ export default function AdminPage() {
 
             {/* Microphone */}
             <div className="flex min-w-0 flex-1 items-center gap-2 lg:max-w-xs">
-              <select
-                value={selectedDevice || ''}
-                onChange={(e) => selectDevice(e.target.value)}
-                aria-label="Microphone"
-                className="h-11 min-w-0 flex-1 rounded-control border border-line bg-paper px-3 text-[0.875rem] text-ink transition-colors hover:border-line-strong"
-              >
-                {devices.length === 0 && (
-                  <option value="" disabled>
-                    Select a microphone…
-                  </option>
-                )}
-                {devices.map((device) => (
-                  <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || `Mic ${device.deviceId.slice(0, 5)}…`}
-                  </option>
-                ))}
-              </select>
+              <Select
+                value={selectedDevice}
+                onChange={selectDevice}
+                options={devices.map((device) => ({
+                  value: device.deviceId,
+                  label: device.label || `Mic ${device.deviceId.slice(0, 5)}…`,
+                }))}
+                label="Microphone"
+                icon={<MicIcon className="h-[18px] w-[18px]" />}
+                placeholder="Select a microphone…"
+                emptyText="No microphones found"
+                className="min-w-0 flex-1"
+              />
               <button
                 onClick={refreshDevices}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control border border-line bg-paper text-ink-muted transition-colors hover:border-line-strong hover:bg-paper-raised hover:text-ink"
@@ -467,33 +483,20 @@ export default function AdminPage() {
             </div>
 
             {/* Translation */}
-            <select
+            <Select
               value={translation}
-              onChange={(e) => {
-                const newTranslation = e.target.value as BibleTranslation;
+              onChange={(newTranslation) => {
                 setTranslation(newTranslation);
                 setScriptureTranslation(newTranslation);
                 setStreamingTranslation(newTranslation);
                 setGPTTranslation(newTranslation);
               }}
-              aria-label="Bible translation"
-              className="h-11 shrink-0 rounded-control border border-line bg-paper px-3 text-[0.875rem] font-semibold text-ink transition-colors hover:border-line-strong"
-            >
-              <optgroup label="Public domain">
-                {TRANSLATIONS.filter((t) => t.isPublicDomain).map((t) => (
-                  <option key={t.code} value={t.code}>
-                    {t.code}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Premium">
-                {TRANSLATIONS.filter((t) => !t.isPublicDomain).map((t) => (
-                  <option key={t.code} value={t.code}>
-                    {t.code}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
+              options={TRANSLATION_OPTIONS}
+              label="Bible translation"
+              icon={<BookIcon className="h-[18px] w-[18px]" />}
+              className="shrink-0"
+              valueClassName="font-semibold"
+            />
 
             <span className="hidden h-8 w-px shrink-0 bg-line lg:block" />
 
@@ -597,8 +600,29 @@ export default function AdminPage() {
                   <p className="tabular text-[0.75rem] text-ink-muted">{transcript.length} segments</p>
                 </div>
               </div>
-              {/* Bars rise while words are arriving and settle when the room is quiet */}
-              {isRecording && <SoundWave idle={!interimText} className="text-amber" />}
+              <div className="flex shrink-0 items-center gap-3">
+                {/* Bars rise while words are arriving and settle when the room is quiet */}
+                {isRecording && <SoundWave idle={!interimText} className="text-amber" />}
+                {transcript.length > 0 && (
+                  <button
+                    onClick={handleCopyTranscript}
+                    className="flex h-9 items-center gap-1.5 rounded-control border border-line bg-paper px-3 text-[0.8125rem] font-semibold text-ink-body transition-colors hover:border-line-strong hover:text-ink"
+                    title="Copy the whole transcript"
+                  >
+                    {copiedId === TRANSCRIPT_COPY_ID ? (
+                      <span className="flex items-center gap-1.5 text-evergreen">
+                        <CheckIcon className="h-3.5 w-3.5" />
+                        Copied
+                      </span>
+                    ) : (
+                      <>
+                        <CopyIcon className="h-3.5 w-3.5" />
+                        Copy
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
 
             <div

@@ -201,3 +201,11 @@ export function ChevronRightIcon({ className = 'h-4 w-4' }: IconProps) {
     </svg>
   );
 }
+
+export function ChevronDownIcon({ className = 'h-4 w-4' }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" aria-hidden="true" {...stroke} strokeWidth={2}>
+      <path d="M4.5 7.5 10 13l5.5-5.5" />
+    </svg>
+  );
+}
