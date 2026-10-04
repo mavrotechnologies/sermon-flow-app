@@ -13,6 +13,7 @@
 
 import { detectScriptures } from './scriptureDetector';
 import { searchPopularVerseCache } from './popularVerseCache';
+import { searchKnowledgeBase } from './knowledgeBaseDetector';
 import { normalizeSpokenText } from './normalizeSpoken';
 import type { ScriptureReference, BibleVerse, BibleTranslation } from '@/types';
 import type { ActiveScriptureContext } from './normalizeSpoken';
@@ -343,6 +344,32 @@ export function processInterimText(
           stableFor: 0,
         };
         earlyMatches.push(streamingMatch);
+      }
+    }
+  }
+
+  // Knowledge base search (characters, stories, places, concepts)
+  // Only run on longer text to avoid false positives from fragments
+  if (normalizedText.length >= 20) {
+    const kbMatches = searchKnowledgeBase(normalizedText, 10);
+    for (const match of kbMatches) {
+      if (match.confidence === 'high' || match.confidence === 'medium') {
+        const ref = match.entity.primaryReference;
+        const key = `${ref.book}-${ref.chapter}-${ref.verseStart}`;
+        if (!state.confirmedMatches.has(key)) {
+          const streamingMatch: StreamingMatch = {
+            id: `kb-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            type: 'complete',
+            book: ref.book,
+            chapter: ref.chapter,
+            verse: ref.verseStart,
+            verseEnd: ref.verseEnd,
+            confidence: match.score / 20,
+            timestamp: Date.now(),
+            stableFor: 0,
+          };
+          earlyMatches.push(streamingMatch);
+        }
       }
     }
   }

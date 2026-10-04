@@ -38,60 +38,6 @@ export interface AudioDevice {
   kind: MediaDeviceKind;
 }
 
-// Sermon Notes Types
-export interface SermonNote {
-  id: string;
-  timestamp: number;
-  mainPoint: string;
-  subPoints: string[];
-  scriptureReferences: string[];
-  keyQuote?: string;
-  theme?: string;
-}
-
-export interface SermonNotesPayload {
-  notes: SermonNote[];
-  isGenerating: boolean;
-}
-
-// Sermon Summary Types
-export interface SermonSummary {
-  id: string;
-  title: string;
-  overview: string;
-  mainThemes: string[];
-  keyPoints: { point: string; scripture?: string }[];
-  keyQuotes: string[];
-  scripturesSummary: string[];
-  closingThought: string;
-  generatedAt: number;
-}
-
-export interface SermonSummaryPayload {
-  summary: SermonSummary | null;
-  isGenerating: boolean;
-}
-
-// Broadcast Types
-export interface VmixCommandPayload {
-  action: 'present' | 'hide';
-  reference?: string;
-  verseText?: string;
-  version?: string;
-  verses?: { number: number; text: string }[];
-}
-
-export interface BroadcastMessage {
-  type: 'transcript' | 'scripture' | 'status' | 'clear' | 'notes' | 'summary' | 'vmix';
-  payload: TranscriptSegment | DetectedScripture | StatusPayload | SermonNotesPayload | SermonSummaryPayload | VmixCommandPayload | null;
-  timestamp: number;
-}
-
-export interface StatusPayload {
-  isRecording: boolean;
-  isConnected: boolean;
-}
-
 // App State Types
 export interface SermonState {
   isRecording: boolean;
@@ -135,13 +81,6 @@ export const TRANSLATIONS: TranslationInfo[] = [
   { code: 'NLT', name: 'NLT', fullName: 'New Living Translation', isPublicDomain: false, description: 'Easy to understand' },
 ];
 
-// SSE Event Types
-export interface SSEMessage {
-  id: string;
-  event: string;
-  data: string;
-}
-
 // Book name mapping type
 export interface BookNameMap {
   osis: string;
@@ -149,19 +88,3 @@ export interface BookNameMap {
   abbrev: string[];
 }
 
-// vMix Integration Types
-export interface VmixSettings {
-  enabled: boolean;
-  host: string;        // e.g. "192.168.1.100"
-  port: number;        // default 8088
-  titleInput: string;  // vMix input number/name for the title graphic
-  referenceField: string;  // field name for scripture reference (default "Headline.Text")
-  verseTextField: string;  // field name for verse text (default "Description.Text")
-}
-
-export interface VmixOverlayState {
-  isShowing: boolean;
-  currentReference: string | null;
-  currentText: string | null;
-  showingSince: number | null;
-}

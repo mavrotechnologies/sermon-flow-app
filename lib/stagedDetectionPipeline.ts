@@ -12,6 +12,7 @@
 
 import { detectScriptures } from './scriptureDetector';
 import { searchPopularVerseCache, type CacheMatchResult } from './popularVerseCache';
+import { searchKnowledgeBase, type KnowledgeBaseMatch } from './knowledgeBaseDetector';
 import { tieredSemanticSearch, isSemanticSearchReady, type SemanticMatch } from './semanticSearch';
 import { type SermonSessionContext } from './sessionContext';
 import type { ScriptureReference } from '@/types';
@@ -24,7 +25,7 @@ export interface PipelineDetection {
   verseStart: number;
   verseEnd?: number;
   confidence: 'high' | 'medium' | 'low';
-  source: 'regex' | 'cache' | 'semantic' | 'gpt' | 'context';
+  source: 'regex' | 'cache' | 'knowledgeBase' | 'semantic' | 'gpt' | 'context';
   reason?: string;
   score?: number;
 }
@@ -34,6 +35,7 @@ export interface PipelineConfig {
   enableCache: boolean;
   enableSemantic: boolean;
   enableGPT: boolean;
+  enableKnowledgeBase: boolean;
   enableContext: boolean;
   semanticMinConfidence: 'high' | 'medium' | 'low';
   gptFallbackThreshold: 'always' | 'medium-only' | 'never';
@@ -42,6 +44,7 @@ export interface PipelineConfig {
 const DEFAULT_CONFIG: PipelineConfig = {
   enableRegex: true,
   enableCache: true,
+  enableKnowledgeBase: true,
   enableSemantic: true,
   enableGPT: true,
   enableContext: true,
@@ -131,6 +134,23 @@ function contextToPipeline(suggestion: { book: string; chapter: number; confiden
 }
 
 /**
+ * Convert knowledge base match to pipeline format
+ */
+function knowledgeBaseToPipeline(match: KnowledgeBaseMatch): PipelineDetection {
+  return {
+    id: generateId(),
+    book: match.entity.primaryReference.book,
+    chapter: match.entity.primaryReference.chapter,
+    verseStart: match.entity.primaryReference.verseStart,
+    verseEnd: match.entity.primaryReference.verseEnd,
+    confidence: match.confidence,
+    source: 'knowledgeBase',
+    reason: `${match.entity.type}: "${match.entity.name}" (trigger: "${match.matchedTrigger}")`,
+    score: match.score,
+  };
+}
+
+/**
  * Deduplicate detections, preferring higher confidence sources
  */
 function deduplicateDetections(detections: PipelineDetection[]): PipelineDetection[] {
@@ -140,6 +160,7 @@ function deduplicateDetections(detections: PipelineDetection[]): PipelineDetecti
   const sourcePriority: Record<string, number> = {
     regex: 5,
     cache: 4,
+    knowledgeBase: 3.5,
     semantic: 3,
     context: 2,
     gpt: 1,
@@ -222,6 +243,18 @@ export async function runDetectionPipeline(
 
     for (const match of cacheResults) {
       detections.push(cacheToPipeline(match));
+    }
+  }
+
+  // Stage 2.5: Knowledge Base (characters, stories, places, concepts)
+  if (fullConfig.enableKnowledgeBase) {
+    const start = performance.now();
+    const kbResults = searchKnowledgeBase(text, 7);
+    timings['knowledgeBase'] = performance.now() - start;
+    stagesRun.push('knowledgeBase');
+
+    for (const match of kbResults) {
+      detections.push(knowledgeBaseToPipeline(match));
     }
   }
 
@@ -313,6 +346,18 @@ function detectTheologicalContent(text: string): boolean {
     'paul', 'peter', 'moses', 'david', 'abraham',
     'says the lord', 'it is written', 'the word says',
     'as we read', 'scripture tells us', 'bible says',
+    // Biblical characters & stories
+    'elijah', 'elisha', 'daniel', 'joseph', 'samuel',
+    'goliath', 'samson', 'gideon', 'joshua', 'noah',
+    'cornelius', 'nicodemus', 'lazarus', 'zacchaeus',
+    'prodigal', 'samaritan', 'pharaoh', 'centurion',
+    // Biblical places & concepts
+    'bethlehem', 'gethsemane', 'golgotha', 'calvary',
+    'eden', 'sinai', 'jericho', 'adullam', 'nineveh',
+    'burning bush', 'lions den', 'fiery furnace',
+    'armor of god', 'fruit of the spirit', 'beatitudes',
+    'born again', 'bread of life', 'good shepherd',
+    'mustard seed', 'dry bones', 'upper room',
   ];
 
   const lowerText = text.toLowerCase();
@@ -348,11 +393,12 @@ export function calculateMultiSignalConfidence(
 
     // Base score from source
     const sourceWeights: Record<string, number> = {
-      regex: 0.95,    // Very reliable
-      cache: 0.85,    // High reliability for popular verses
-      semantic: 0.75, // Good but can have false positives
-      context: 0.65,  // Helpful but speculative
-      gpt: 0.80,      // Generally good but expensive
+      regex: 0.95,          // Very reliable
+      cache: 0.85,          // High reliability for popular verses
+      knowledgeBase: 0.82,  // Contextual biblical knowledge
+      semantic: 0.75,       // Good but can have false positives
+      context: 0.65,        // Helpful but speculative
+      gpt: 0.80,            // Generally good but expensive
     };
 
     const sourceScore = sourceWeights[detection.source] || 0.5;

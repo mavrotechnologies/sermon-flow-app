@@ -1,56 +1,195 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   SermonFlow design system — "warm parchment + evergreen"
+
+   One system for the whole app: the marketing site (/, /login, /register) and
+   the dashboard (/admin). Surfaces opt in with the `.parchment` class.
+   ========================================================================== */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fbfaf6;
+  --foreground: #161a17;
+}
+
+@theme {
+  /* Canvas — warm off-whites, never pure #fff */
+  --color-paper: #fbfaf6;
+  --color-paper-raised: #f4f1ea;
+
+  /* Ink — three levels of text emphasis */
+  --color-ink: #161a17;
+  --color-ink-body: #4a524c;
+  --color-ink-muted: #7c857e;
+
+  /* Hairlines */
+  --color-line: #e4dfd4;
+  --color-line-strong: #d6cfc0;
+
+  /* Primary — evergreen */
+  --color-evergreen: #1f5d4c;
+  --color-evergreen-hover: #17493b;
+  --color-evergreen-soft: #e7efea;
+  --color-evergreen-deep: #0f2e26;
+
+  /* Accent — amber, the "live" colour: active and just-detected states */
+  --color-amber: #c8842a;
+  --color-amber-soft: #fbf2e3;
+
+  /* Glow — light amber, for highlights and CTAs on the evergreen-deep bands */
+  --color-amber-glow: #e9b872;
+  --color-amber-glow-hover: #f0c88d;
+
+  /* Danger — a warm brick red, for recording and destructive actions */
+  --color-danger: #b23b2e;
+  --color-danger-hover: #9a3126;
+  --color-danger-soft: #fcecea;
+
+  /* Radii — soft but not pill-shaped */
+  --radius-card: 1rem;
+  --radius-control: 0.625rem;
+
+  /* Elevation — warm-tinted shadows, low opacity */
+  --shadow-soft: 0 1px 2px rgba(22, 26, 23, 0.04), 0 4px 16px rgba(22, 26, 23, 0.04);
+  --shadow-lifted: 0 2px 4px rgba(22, 26, 23, 0.04), 0 12px 32px rgba(22, 26, 23, 0.08);
+  /* For evergreen-deep cards sitting on parchment, and paper cards on a deep band */
+  --shadow-deep: 0 2px 6px rgba(15, 46, 38, 0.14), 0 28px 56px -18px rgba(15, 46, 38, 0.45);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-manrope);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  /* The app is light-only, so pin native controls and scrollbars to light
+     rather than following the OS theme. */
+  color-scheme: light;
+  scroll-behavior: smooth;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
 }
 
-/* Custom Animations */
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-20px); }
+.parchment {
+  background-color: var(--color-paper);
+  color: var(--color-ink-body);
 }
 
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
-  50% { box-shadow: 0 0 40px rgba(59, 130, 246, 0.8), 0 0 60px rgba(59, 130, 246, 0.4); }
-}
-
-@keyframes gradient-shift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-@keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
+/* Cascade note: Tailwind v4 orders `theme, base, components, utilities`.
+   Element defaults go in `base` and the reusable type classes go in
+   `components`, so a `text-*`/`font-*` utility always wins and `.eyebrow` beats
+   the heading defaults — no `!important` anywhere. */
+@layer base {
+  /* Fraunces is optically sized and runs wide by default — tighten the tracking
+     and lean on its softer, lower-contrast axis settings. */
+  .parchment h1,
+  .parchment h2,
+  .parchment h3 {
+    font-family: var(--font-fraunces), Georgia, serif;
+    font-variation-settings: "SOFT" 40, "WONK" 1;
+    letter-spacing: -0.02em;
+    color: var(--color-ink);
+    text-wrap: balance;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+
+  .parchment p {
+    text-wrap: pretty;
   }
+
+  /* Headings flip to paper on the dark bands without a utility on each one */
+  .parchment .band-deep :is(h1, h2, h3) {
+    color: var(--color-paper);
+  }
+}
+
+@layer components {
+  /* Evergreen-deep band — the dark, rich moments: hero, live-room header, the
+     latest verse. Pair with <AmbientGlow /> for the light behind the content. */
+  .band-deep {
+    background-color: var(--color-evergreen-deep);
+    color: rgb(251 250 246 / 0.72);
+  }
+
+  /* Scripture text — Fraunces italic, set like a pull quote rather than UI copy.
+     WONK off: the swashed italic forms are too busy at paragraph length. */
+  .verse {
+    font-family: var(--font-fraunces), Georgia, serif;
+    font-style: italic;
+    font-variation-settings: "SOFT" 50, "WONK" 0;
+    letter-spacing: -0.005em;
+  }
+
+  /* Live audio bars. In the components layer so size utilities can restyle it
+     (`h-12 gap-1.5 [&>span]:w-1.5`). `--wave-min/max` set the bar travel. */
+  .sound-wave {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 20px;
+  }
+
+  .sound-wave span {
+    display: block;
+    width: 3px;
+    height: 100%;
+    background: currentColor;
+    border-radius: 2px;
+    animation: wave 0.9s ease-in-out infinite;
+  }
+
+  /* Mic open, nobody speaking — bars settle low and slow */
+  .sound-wave-idle {
+    --wave-min: 0.16;
+    --wave-max: 0.34;
+  }
+
+  .sound-wave-idle span {
+    animation-duration: 1.7s;
+  }
+
+  /* Opt any element into the display face. Sets no colour of its own. */
+  .font-display {
+    font-family: var(--font-fraunces), Georgia, serif;
+    font-variation-settings: "SOFT" 40, "WONK" 1;
+    letter-spacing: -0.02em;
+  }
+
+  /* Tabular figures so counts, prices and verse numbers don't jitter */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Eyebrow / overline label — stays Manrope even on a heading element */
+  .eyebrow {
+    font-family: var(--font-manrope), system-ui, sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+}
+
+/* ==========================================================================
+   Motion
+   ========================================================================== */
+
+/* Scroll reveal — paired with the useInView hook */
+.reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal-visible {
+  opacity: 1;
+  transform: none;
 }
 
 @keyframes fade-in {
@@ -58,452 +197,10 @@ body {
   to { opacity: 1; }
 }
 
-@keyframes slide-in-left {
+@keyframes fade-in-up {
   from {
     opacity: 0;
-    transform: translateX(-50px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes slide-in-right {
-  from {
-    opacity: 0;
-    transform: translateX(50px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes scale-in {
-  from {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes wave {
-  0%, 100% { transform: scaleY(1); }
-  50% { transform: scaleY(1.5); }
-}
-
-@keyframes recording-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(1.1); }
-}
-
-/* Animation Classes */
-.animate-float {
-  animation: float 6s ease-in-out infinite;
-}
-
-.animate-pulse-glow {
-  animation: pulse-glow 2s ease-in-out infinite;
-}
-
-.animate-gradient {
-  background-size: 200% 200%;
-  animation: gradient-shift 8s ease infinite;
-}
-
-.animate-fade-in-up {
-  animation: fade-in-up 0.8s ease-out forwards;
-}
-
-.animate-fade-in {
-  animation: fade-in 0.6s ease-out forwards;
-}
-
-.animate-slide-in-left {
-  animation: slide-in-left 0.6s ease-out forwards;
-}
-
-.animate-slide-in-right {
-  animation: slide-in-right 0.6s ease-out forwards;
-}
-
-.animate-scale-in {
-  animation: scale-in 0.5s ease-out forwards;
-}
-
-.animate-recording-pulse {
-  animation: recording-pulse 1.5s ease-in-out infinite;
-}
-
-/* Animation Delays */
-.delay-100 { animation-delay: 0.1s; }
-.delay-200 { animation-delay: 0.2s; }
-.delay-300 { animation-delay: 0.3s; }
-.delay-400 { animation-delay: 0.4s; }
-.delay-500 { animation-delay: 0.5s; }
-.delay-600 { animation-delay: 0.6s; }
-.delay-700 { animation-delay: 0.7s; }
-.delay-800 { animation-delay: 0.8s; }
-.delay-900 { animation-delay: 0.9s; }
-.delay-1000 { animation-delay: 1s; }
-
-/* Initially hidden for animations */
-.opacity-0-initial {
-  opacity: 0;
-}
-
-/* Glass Morphism */
-.glass {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.glass-dark {
-  background: rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.glass-card {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-/* MD3 Design System */
-
-/* MD3 Color Tokens - Dark Theme */
-:root {
-  --md3-primary: #a5c8ff;
-  --md3-on-primary: #003062;
-  --md3-primary-container: #00468a;
-  --md3-on-primary-container: #d4e3ff;
-
-  --md3-secondary: #bbc7db;
-  --md3-on-secondary: #263141;
-  --md3-secondary-container: #3c4858;
-  --md3-on-secondary-container: #d7e3f8;
-
-  --md3-tertiary: #d5bee5;
-  --md3-on-tertiary: #3a2948;
-  --md3-tertiary-container: #513f60;
-  --md3-on-tertiary-container: #f1daff;
-
-  --md3-surface: #0f1115;
-  --md3-surface-container: #1a1d24;
-  --md3-surface-container-high: #252830;
-  --md3-surface-container-highest: #30333c;
-  --md3-on-surface: #e2e2e9;
-  --md3-on-surface-variant: #c4c7d0;
-  --md3-outline: #8e9099;
-  --md3-outline-variant: #44474f;
-}
-
-/* MD3 Surface Containers */
-.md3-surface {
-  background-color: var(--md3-surface);
-}
-
-.md3-surface-container {
-  background-color: var(--md3-surface-container);
-}
-
-.md3-surface-container-high {
-  background-color: var(--md3-surface-container-high);
-}
-
-.md3-surface-container-highest {
-  background-color: var(--md3-surface-container-highest);
-}
-
-/* MD3 Primary */
-.md3-primary {
-  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-}
-
-/* MD3 Buttons */
-.md3-filled {
-  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-  color: white;
-  transition: all 0.2s ease;
-}
-
-.md3-filled:hover {
-  filter: brightness(1.1);
-  transform: translateY(-1px);
-}
-
-.md3-filled:active {
-  transform: translateY(0);
-}
-
-.md3-filled-tonal {
-  background-color: rgba(165, 200, 255, 0.12);
-  color: #a5c8ff;
-  transition: all 0.2s ease;
-}
-
-.md3-filled-tonal:hover {
-  background-color: rgba(165, 200, 255, 0.18);
-}
-
-.md3-outlined {
-  background-color: transparent;
-  border: 1.5px solid var(--md3-outline-variant);
-  color: var(--md3-on-surface);
-  transition: all 0.2s ease;
-}
-
-.md3-outlined:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: var(--md3-outline);
-}
-
-.md3-text {
-  background-color: transparent;
-  color: var(--md3-primary);
-  transition: all 0.2s ease;
-}
-
-.md3-text:hover {
-  background-color: rgba(165, 200, 255, 0.08);
-}
-
-/* MD3 Chips */
-.md3-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.5rem 1rem;
-  background-color: var(--md3-surface-container-high);
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--md3-on-surface);
-  transition: all 0.2s ease;
-}
-
-.md3-chip:hover {
-  background-color: var(--md3-surface-container-highest);
-}
-
-.md3-chip-outlined {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.5rem 1rem;
-  background-color: transparent;
-  border: 1px solid var(--md3-outline-variant);
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--md3-on-surface);
-  transition: all 0.2s ease;
-}
-
-.md3-chip-outlined:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-  border-color: var(--md3-outline);
-}
-
-/* MD3 Cards */
-.md3-card {
-  background-color: var(--md3-surface-container);
-  border-radius: 1.5rem;
-  overflow: hidden;
-}
-
-.md3-card-elevated {
-  background-color: var(--md3-surface-container-high);
-  border-radius: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-/* MD3 Touch Target (48dp minimum) */
-.tap-target {
-  min-height: 48px;
-  min-width: 48px;
-}
-
-@media (min-width: 768px) {
-  .tap-target {
-    min-height: 40px;
-    min-width: 40px;
-  }
-}
-
-/* Blinking cursor animation */
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-
-.animate-blink {
-  animation: blink 1s step-end infinite;
-}
-
-/* Typing animation */
-.typing-animation {
-  overflow: hidden;
-}
-
-/* Enhanced card hover */
-.card-hover-glow {
-  position: relative;
-}
-
-.card-hover-glow::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(139, 92, 246, 0.3));
-  border-radius: inherit;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  z-index: -1;
-  filter: blur(8px);
-}
-
-.card-hover-glow:hover::before {
-  opacity: 1;
-}
-
-/* Gradient Text */
-.gradient-text {
-  background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 50%, #f472b6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.gradient-text-gold {
-  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* Gradient Backgrounds */
-.gradient-bg-primary {
-  background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 50%, #1e1b4b 100%);
-}
-
-.gradient-bg-radial {
-  background: radial-gradient(ellipse at top, #1e3a5f 0%, #0f172a 50%, #0a0a0a 100%);
-}
-
-/* Glow Effects */
-.glow-blue {
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3), 0 0 40px rgba(59, 130, 246, 0.1);
-}
-
-.glow-purple {
-  box-shadow: 0 0 20px rgba(139, 92, 246, 0.3), 0 0 40px rgba(139, 92, 246, 0.1);
-}
-
-.glow-gold {
-  box-shadow: 0 0 20px rgba(251, 191, 36, 0.3), 0 0 40px rgba(251, 191, 36, 0.1);
-}
-
-/* Hover Effects */
-.hover-lift {
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.hover-lift:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-}
-
-.hover-glow {
-  transition: box-shadow 0.3s ease;
-}
-
-.hover-glow:hover {
-  box-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
-}
-
-/* Sound Wave Animation */
-.sound-wave {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  height: 24px;
-}
-
-.sound-wave span {
-  display: block;
-  width: 4px;
-  height: 100%;
-  background: currentColor;
-  border-radius: 2px;
-  animation: wave 0.8s ease-in-out infinite;
-}
-
-.sound-wave span:nth-child(1) { animation-delay: 0s; }
-.sound-wave span:nth-child(2) { animation-delay: 0.1s; }
-.sound-wave span:nth-child(3) { animation-delay: 0.2s; }
-.sound-wave span:nth-child(4) { animation-delay: 0.3s; }
-.sound-wave span:nth-child(5) { animation-delay: 0.4s; }
-
-/* Scrollbar Styling */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(100, 100, 100, 0.5);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 100, 100, 0.7);
-}
-
-/* Custom Selection */
-::selection {
-  background: rgba(59, 130, 246, 0.3);
-  color: white;
-}
-
-/* Smooth Scroll */
-html {
-  scroll-behavior: smooth;
-}
-
-/* Pulse glow animation for CTA */
-@keyframes pulse-glow-slow {
-  0%, 100% {
-    opacity: 0.5;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.8;
-    transform: scale(1.1);
-  }
-}
-
-.animate-pulse-glow-slow {
-  animation: pulse-glow-slow 3s ease-in-out infinite;
-}
-
-/* Scroll-triggered animations */
-@keyframes slide-up {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
+    transform: translateY(16px);
   }
   to {
     opacity: 1;
@@ -511,68 +208,279 @@ html {
   }
 }
 
-@keyframes scale-up {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out forwards;
 }
 
-@keyframes pop-in {
-  from {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.animate-slide-up {
-  animation: slide-up 0.6s ease-out forwards;
+.delay-100 { animation-delay: 0.1s; }
+.delay-200 { animation-delay: 0.2s; }
+
+/* Calm ambient pulse for the "listening" indicator */
+@keyframes listening-ring {
+  0% { transform: scale(0.85); opacity: 0.5; }
+  70% { transform: scale(1.6); opacity: 0; }
+  100% { transform: scale(1.6); opacity: 0; }
 }
 
-.animate-scale-up {
-  animation: scale-up 0.6s ease-out forwards;
+.animate-listening-ring {
+  animation: listening-ring 2.4s ease-out infinite;
 }
 
-.animate-pop-in {
-  animation: pop-in 0.4s ease-out forwards;
-}
-
-/* Recording pulse */
+/* Status dot for recording / detecting */
 @keyframes recording-dot {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  50% { opacity: 0.35; }
 }
 
 .animate-recording {
   animation: recording-dot 1.5s ease-in-out infinite;
 }
 
-/* Breathing pulse for icons */
-@keyframes breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
+/* Live audio bars, shown while the mic is open (styled in the components layer) */
+@keyframes wave {
+  0%, 100% { transform: scaleY(var(--wave-min, 0.5)); }
+  50% { transform: scaleY(var(--wave-max, 1)); }
 }
 
-.animate-breathe {
-  animation: breathe 2.5s ease-in-out infinite;
+/* A verse arriving: drops in from above with an amber ring that fades out.
+   No fill-mode, so the card's own shadow returns once the ring is gone. */
+@keyframes verse-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.985);
+    box-shadow: 0 0 0 0 rgba(233, 184, 114, 0);
+  }
+  45% {
+    opacity: 1;
+    transform: none;
+    box-shadow: 0 0 0 4px rgba(233, 184, 114, 0.6);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    box-shadow: 0 0 0 0 rgba(233, 184, 114, 0);
+  }
 }
 
-/* Focus Styles */
+.animate-verse-in {
+  animation: verse-in 1s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Dialogs and menus */
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Empty-state icons breathe a little */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+/* Text caret at the end of the live transcript */
+@keyframes caret {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.16em;
+  border-radius: 1px;
+  background: currentColor;
+  animation: caret 1.05s steps(1) infinite;
+}
+
+/* Usage bar fills from empty on load */
+@keyframes grow-x {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.animate-grow-x {
+  transform-origin: left;
+  animation: grow-x 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.25s backwards;
+}
+
+/* ---- Evergreen-deep bands ---- */
+
+/* Slow-moving light behind dark-band content — see <AmbientGlow /> */
+@keyframes drift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(7%, 9%, 0) scale(1.14); }
+}
+
+.glow {
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.glow-evergreen {
+  /* Eased stops — a straight fade to transparent leaves a visible rim */
+  background: radial-gradient(
+    closest-side,
+    rgba(47, 138, 112, 0.42),
+    rgba(47, 138, 112, 0.22) 35%,
+    rgba(47, 138, 112, 0.08) 65%,
+    rgba(47, 138, 112, 0.02) 85%,
+    transparent
+  );
+  animation: drift 21s ease-in-out infinite alternate-reverse;
+}
+
+/* Fine dot grid, fading out from the top — keeps a large dark band from reading flat */
+.dot-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(251, 250, 246, 0.09) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(75% 70% at 50% 0%, black, transparent);
+}
+
+/* "On air" line under the live-room header while the mic is open */
+@keyframes on-air {
+  from { background-position: 200% 0; }
+  to { background-position: 0% 0; }
+}
+
+.on-air {
+  background-image: linear-gradient(90deg, transparent, var(--color-amber-glow), transparent);
+  background-size: 200% 100%;
+  animation: on-air 2.8s linear infinite;
+}
+
+/* Endless row of chips. The track holds two copies of its content, so sliding
+   it by half its width loops seamlessly. Pauses on hover. */
+@keyframes marquee {
+  to { transform: translateX(-50%); }
+}
+
+.marquee {
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent, black 7%, black 93%, transparent);
+}
+
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 48s linear infinite;
+}
+
+.marquee:hover .marquee-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .animate-fade-in,
+  .animate-fade-in-up,
+  .animate-listening-ring,
+  .animate-recording,
+  .animate-verse-in,
+  .animate-scale-in,
+  .animate-float,
+  .animate-grow-x,
+  .glow-evergreen,
+  .on-air,
+  .caret,
+  .sound-wave span {
+    animation: none;
+  }
+
+  /* No scrolling row: show one copy of the chips, wrapped and centred */
+  .marquee {
+    mask-image: none;
+  }
+
+  .marquee-track {
+    width: auto;
+    flex-wrap: wrap;
+    justify-content: center;
+    animation: none;
+  }
+
+  .marquee-track > [aria-hidden="true"] {
+    display: none;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* ==========================================================================
+   Chrome
+   ========================================================================== */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border: 3px solid var(--color-paper);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-muted);
+}
+
+::selection {
+  background: rgba(31, 93, 76, 0.16);
+  color: var(--color-ink);
+}
+
 button:focus-visible,
-a:focus-visible {
-  outline: 2px solid #3b82f6;
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-evergreen);
   outline-offset: 2px;
 }
 
 input:focus-visible,
-select:focus-visible {
-  outline: none;
+select:focus-visible,
+textarea:focus-visible {
+  outline-offset: 1px;
+}
+
+/* Evergreen on evergreen-deep is invisible — focus rings glow amber there */
+.band-deep :is(button, a, input, select, textarea):focus-visible {
+  outline-color: var(--color-amber-glow);
 }

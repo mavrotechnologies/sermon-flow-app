@@ -1,180 +1,157 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
+import { apiError, apiFetch } from '@/lib/api';
+import { lookupVerses } from '@/lib/verseLookup';
+import type { BibleTranslation, BibleVerse } from '@/types';
 
-export interface GPTDetectedScripture {
+export interface GPTScripture {
   id: string;
   book: string;
   chapter: number;
-  verse: number;
+  verseStart: number;
   verseEnd?: number;
   confidence: 'high' | 'medium' | 'low';
   reason: string;
-  detectedAt: number;
-  text?: string; // Will be filled from verse lookup
+  verses: BibleVerse[];
+  timestamp: number;
 }
 
 interface UseGPTScriptureDetectionResult {
+  gptScriptures: GPTScripture[];
   isDetecting: boolean;
-  detectedScriptures: GPTDetectedScripture[];
   error: string | null;
-  detect: (text: string, immediate?: boolean) => void;
-  clearScriptures: () => void;
+  detectFromText: (text: string) => Promise<GPTScripture[]>;
+  clear: () => void;
+  setTranslation: (t: BibleTranslation) => void;
 }
 
-/**
- * Hook for GPT-powered Bible scripture detection
- * Uses OpenAI GPT-4o-mini to identify Bible references in sermon text
- */
 export function useGPTScriptureDetection(): UseGPTScriptureDetectionResult {
+  const [gptScriptures, setGptScriptures] = useState<GPTScripture[]>([]);
   const [isDetecting, setIsDetecting] = useState(false);
-  const [detectedScriptures, setDetectedScriptures] = useState<GPTDetectedScripture[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const translationRef = useRef<BibleTranslation>('NKJV');
+  const processedRef = useRef<Set<string>>(new Set());
+  const bufferRef = useRef<string[]>([]);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contextRef = useRef<string>('');
 
-  // Debounce and deduplication
-  const lastTextRef = useRef<string>('');
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
-  const idCounterRef = useRef(0);
-  const pendingRequestRef = useRef<AbortController | null>(null);
-
-  /**
-   * Generate unique ID for detected scripture
-   */
-  const generateId = useCallback(() => {
-    idCounterRef.current += 1;
-    return `gpt-scripture-${Date.now()}-${idCounterRef.current}`;
+  const setTranslation = useCallback((t: BibleTranslation) => {
+    translationRef.current = t;
   }, []);
 
-  /**
-   * Detect scriptures in the given text - real-time as preacher speaks
-   */
-  const detect = useCallback(async (text: string, immediate: boolean = false) => {
-    // Skip if text hasn't changed enough (at least 20 new characters)
-    if (!immediate && text.length - lastTextRef.current.length < 20 && text.includes(lastTextRef.current.slice(-50))) {
-      return;
-    }
+  const callGPT = useCallback(async (text: string): Promise<GPTScripture[]> => {
+    try {
+      const res = await apiFetch('/api/v1/scripture/detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, context: contextRef.current || null }),
+      });
 
-    // Skip short text
-    if (text.trim().length < 30) {
-      return;
-    }
+      if (!res.ok) {
+        throw new Error(await apiError(res));
+      }
 
-    lastTextRef.current = text;
+      const { scriptures } = await res.json();
+      if (!Array.isArray(scriptures) || scriptures.length === 0) return [];
 
-    // Clear existing debounce
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
+      const newScriptures: GPTScripture[] = [];
 
-    // Cancel pending request if new text comes in
-    if (pendingRequestRef.current) {
-      pendingRequestRef.current.abort();
-    }
+      for (const s of scriptures) {
+        const key = `${s.book}-${s.chapter}-${s.verseStart}`;
+        if (processedRef.current.has(key)) continue;
+        processedRef.current.add(key);
 
-    // Fast debounce - 300ms for real-time feel
-    const debounceTime = immediate ? 0 : 300;
-
-    debounceRef.current = setTimeout(async () => {
-      setIsDetecting(true);
-      setError(null);
-
-      // Create abort controller for this request
-      const abortController = new AbortController();
-      pendingRequestRef.current = abortController;
-
-      try {
-        const response = await fetch('/api/detect-scripture', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
+        const verses = await lookupVerses(
+          {
+            id: `gpt-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            rawText: `${s.book} ${s.chapter}:${s.verseStart}`,
+            book: s.book,
+            chapter: s.chapter,
+            verseStart: s.verseStart,
+            verseEnd: s.verseEnd || undefined,
+            osis: '',
           },
-          body: JSON.stringify({ text }),
-          signal: abortController.signal,
+          translationRef.current
+        );
+
+        newScriptures.push({
+          id: `gpt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          book: s.book,
+          chapter: s.chapter,
+          verseStart: s.verseStart,
+          verseEnd: s.verseEnd || undefined,
+          confidence: s.confidence || 'medium',
+          reason: s.reason || 'GPT detection',
+          verses,
+          timestamp: Date.now(),
         });
+      }
 
-        if (!response.ok) {
-          throw new Error('Failed to detect scriptures');
-        }
+      if (newScriptures.length > 0) {
+        setGptScriptures(prev => [...newScriptures, ...prev]);
+      }
 
-        const data = await response.json();
-        const scriptures = data.scriptures || [];
+      // Update context for subsequent calls
+      contextRef.current = text.slice(-500);
 
-        // Add to existing scriptures, avoiding duplicates
-        setDetectedScriptures(prev => {
-          const newScriptures = [...prev];
+      return newScriptures;
+    } catch (err) {
+      console.error('GPT detection error:', err);
+      setError(err instanceof Error ? err.message : 'GPT detection failed');
+      return [];
+    }
+  }, []);
 
-          for (const scripture of scriptures) {
-            const key = `${scripture.book}-${scripture.chapter}-${scripture.verse}`;
-            const existingIndex = newScriptures.findIndex(
-              s => `${s.book}-${s.chapter}-${s.verse}` === key
-            );
+  // Debounced detection - accumulates text and sends every 3 seconds
+  const detectFromText = useCallback(async (text: string): Promise<GPTScripture[]> => {
+    bufferRef.current.push(text);
 
-            if (existingIndex === -1) {
-              // Prepend new scripture (stack order - newest on top)
-              newScriptures.unshift({
-                ...scripture,
-                id: generateId(),
-                detectedAt: Date.now(),
-              });
-            } else if (
-              getConfidenceLevel(scripture.confidence) >
-              getConfidenceLevel(newScriptures[existingIndex].confidence)
-            ) {
-              // Update if higher confidence
-              newScriptures[existingIndex] = {
-                ...newScriptures[existingIndex],
-                ...scripture,
-              };
-            }
-          }
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
 
-          // Keep only last 30 scriptures
-          return newScriptures.slice(0, 30);
-        });
-      } catch (err) {
-        // Ignore abort errors
-        if (err instanceof Error && err.name === 'AbortError') {
+    return new Promise((resolve) => {
+      timerRef.current = setTimeout(async () => {
+        // 1 second debounce for fast detection
+        const combined = bufferRef.current.join(' ');
+        bufferRef.current = [];
+
+        if (combined.trim().length < 10) {
+          resolve([]);
           return;
         }
-        console.error('GPT detection error:', err);
-        setError(err instanceof Error ? err.message : 'Detection failed');
-      } finally {
-        setIsDetecting(false);
-        pendingRequestRef.current = null;
-      }
-    }, debounceTime);
-  }, [generateId]);
 
-  /**
-   * Clear all detected scriptures
-   */
-  const clearScriptures = useCallback(() => {
-    setDetectedScriptures([]);
-    lastTextRef.current = '';
+        setIsDetecting(true);
+        setError(null);
+        try {
+          const results = await callGPT(combined);
+          resolve(results);
+        } finally {
+          setIsDetecting(false);
+        }
+      }, 1000);
+    });
+  }, [callGPT]);
+
+  const clear = useCallback(() => {
+    setGptScriptures([]);
+    processedRef.current.clear();
+    bufferRef.current = [];
+    contextRef.current = '';
     setError(null);
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
   }, []);
 
   return {
+    gptScriptures,
     isDetecting,
-    detectedScriptures,
     error,
-    detect,
-    clearScriptures,
+    detectFromText,
+    clear,
+    setTranslation,
   };
-}
-
-/**
- * Convert confidence string to numeric level for comparison
- */
-function getConfidenceLevel(confidence: string): number {
-  switch (confidence) {
-    case 'high':
-      return 3;
-    case 'medium':
-      return 2;
-    case 'low':
-      return 1;
-    default:
-      return 0;
-  }
 }

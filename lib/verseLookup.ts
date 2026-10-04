@@ -1,4 +1,5 @@
 import type { BibleVerse, ScriptureReference, BibleTranslation } from '@/types';
+import { apiFetch } from '@/lib/api';
 
 // Cache for loaded Bible data
 const bibleCache: Partial<Record<BibleTranslation, BibleData>> = {};
@@ -94,7 +95,7 @@ const BIBLE_API_TRANSLATIONS: Record<string, string> = {
 const PREMIUM_TRANSLATIONS = new Set(['NKJV', 'NIV', 'NLT']);
 
 /**
- * Look up verses from our API.Bible proxy (for premium translations)
+ * Look up verses through the SermonFlow backend's API.Bible proxy (premium translations)
  * Uses a single API call for ranges, then splits the text per verse
  */
 async function lookupApiBible(
@@ -114,7 +115,7 @@ async function lookupApiBible(
         translation,
       });
 
-      const response = await fetch(`/api/bible-verse?${params}`);
+      const response = await apiFetch(`/api/v1/verses/passage?${params}`);
       if (!response.ok) return lookupBibleApi(ref, 'KJV');
 
       const data = await response.json();
@@ -141,7 +142,7 @@ async function lookupApiBible(
       });
 
       promises.push(
-        fetch(`/api/bible-verse?${params}`)
+        apiFetch(`/api/v1/verses/passage?${params}`)
           .then(async (response) => {
             if (!response.ok) return null;
             const data = await response.json();

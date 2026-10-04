@@ -73,6 +73,7 @@ interface UseEnhancedScriptureDetectionResult {
 const DEFAULT_PIPELINE_CONFIG: PipelineConfig = {
   enableRegex: true,
   enableCache: true,
+  enableKnowledgeBase: true,
   enableSemantic: true,
   enableGPT: true,
   enableContext: true,

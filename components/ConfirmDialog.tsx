@@ -1,5 +1,8 @@
 'use client';
 
+import { useEffect } from 'react';
+import { AlertIcon } from '@/components/ui/icons';
+
 interface ConfirmDialogProps {
   isOpen: boolean;
   onConfirm: () => void;
@@ -19,56 +22,60 @@ export function ConfirmDialog({
   confirmLabel = 'Confirm',
   confirmVariant = 'danger',
 }: ConfirmDialogProps) {
+  // Escape to dismiss — expected of any modal.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onCancel]);
+
   if (!isOpen) return null;
+
+  const isDanger = confirmVariant === 'danger';
 
   return (
     <div
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50"
+      className="parchment animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-evergreen-deep/45 p-4 backdrop-blur-sm"
       onClick={onCancel}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
     >
       <div
-        className="relative p-[1px] rounded-2xl bg-gradient-to-b from-red-500/30 via-red-500/10 to-transparent max-w-sm mx-4 animate-fade-in"
-        onClick={(e) => e.stopPropagation()}
+        className="animate-scale-in w-full max-w-sm rounded-card border border-line bg-paper p-6 shadow-deep"
+        onClick={(event) => event.stopPropagation()}
       >
-        <div className="bg-[#0c0c10] rounded-2xl p-6">
-          {/* Header */}
-          <div className="flex items-center gap-3 mb-4">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg ${
-              confirmVariant === 'danger'
-                ? 'bg-red-500/10 border border-red-500/20'
-                : 'bg-blue-500/10 border border-blue-500/20'
-            }`}>
-              <svg className={`w-5 h-5 ${confirmVariant === 'danger' ? 'text-red-400' : 'text-blue-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-white">{title}</h3>
-            </div>
-          </div>
+        <div className="flex items-center gap-3">
+          <span
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.625rem] ${
+              isDanger ? 'bg-danger-soft text-danger' : 'bg-evergreen-soft text-evergreen'
+            }`}
+          >
+            <AlertIcon className="h-5 w-5" />
+          </span>
+          <h3 className="text-lg font-semibold">{title}</h3>
+        </div>
 
-          {/* Message */}
-          <p className="text-gray-400 text-sm mb-6 leading-relaxed">{message}</p>
+        <p className="mt-4 text-[0.9375rem] leading-relaxed text-ink-body">{message}</p>
 
-          {/* Buttons */}
-          <div className="flex items-center gap-3 justify-end">
-            <button
-              onClick={onCancel}
-              className="px-4 py-2.5 glass border border-white/10 hover:border-white/20 hover:bg-white/10 text-gray-300 text-sm font-medium rounded-xl transition-all"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={onConfirm}
-              className={`px-4 py-2.5 text-white text-sm font-semibold rounded-xl transition-all shadow-lg ${
-                confirmVariant === 'danger'
-                  ? 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 shadow-red-500/20'
-                  : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 shadow-blue-500/20'
-              }`}
-            >
-              {confirmLabel}
-            </button>
-          </div>
+        <div className="mt-6 flex items-center justify-end gap-2.5">
+          <button
+            onClick={onCancel}
+            className="flex h-11 items-center rounded-control border border-line bg-paper px-4 text-[0.9375rem] font-semibold text-ink transition-all hover:border-line-strong hover:bg-paper-raised active:scale-[0.98]"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`flex h-11 items-center rounded-control px-4 text-[0.9375rem] font-semibold text-paper shadow-soft transition-all active:scale-[0.98] ${
+              isDanger ? 'bg-danger hover:bg-danger-hover' : 'bg-evergreen hover:bg-evergreen-hover'
+            }`}
+          >
+            {confirmLabel}
+          </button>
         </div>
       </div>
     </div>

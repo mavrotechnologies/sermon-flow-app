@@ -1,0 +1,37 @@
+{
+  "name": "SermonFlow - Real-Time Sermon Transcription",
+  "short_name": "SermonFlow",
+  "description": "Real-time sermon transcription with automatic Bible scripture detection and display",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fbfaf6",
+  "theme_color": "#1f5d4c",
+  "orientation": "any",
+  "categories": ["productivity", "education", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

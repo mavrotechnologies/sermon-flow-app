@@ -32,9 +32,14 @@ export function useScriptureDetection(
   const isInitialized = useRef(false);
   const verseCache = useRef<Map<string, BibleVerse[]>>(new Map());
 
-  // Use ref to access current scriptures in useEffect without stale closure
+  // Mirror of the latest scriptures so the callbacks below can read the current
+  // value without being re-created on every change. Written in an effect rather
+  // than during render — a render-phase ref write is unsafe under concurrent
+  // rendering, and every reader here runs after commit (callbacks and effects).
   const scripturesRef = useRef<DetectedScripture[]>([]);
-  scripturesRef.current = detectedScriptures;
+  useEffect(() => {
+    scripturesRef.current = detectedScriptures;
+  }, [detectedScriptures]);
 
   // Initialize the BCV parser
   useEffect(() => {
